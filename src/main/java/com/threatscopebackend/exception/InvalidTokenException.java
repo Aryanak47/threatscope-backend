@@ -1,0 +1,20 @@
+package com.threatscope.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+@ResponseStatus(HttpStatus.BAD_REQUEST)
+public class InvalidTokenException extends RuntimeException {
+    
+    public InvalidTokenException(String token, String message) {
+        super(String.format("Failed for [%s]: %s", token, message));
+    }
+    
+    public InvalidTokenException(String message) {
+        super(message);
+    }
+    
+    public InvalidTokenException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
