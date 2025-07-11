@@ -1,6 +1,7 @@
-package com.threatscope.exception;
+package com.threatscopebackend.exception;
 
 import com.threatscope.dto.response.ApiResponse;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -18,8 +19,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.lang.NonNull;
 
-import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -28,25 +30,30 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @Override
+    @NonNull
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
-            MethodArgumentNotValidException ex,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
+            @NonNull MethodArgumentNotValidException ex,
+            @NonNull HttpHeaders headers,
+            @NonNull HttpStatusCode status,
+            @NonNull WebRequest request) {
         
         Map<String, String> errors = ex.getBindingResult()
                 .getFieldErrors()
                 .stream()
                 .collect(Collectors.toMap(
                         FieldError::getField,
-                        fieldError -> fieldError.getDefaultMessage() != null ? fieldError.getDefaultMessage() : ""
+                        fieldError -> {
+                            fieldError.getDefaultMessage();
+                            return fieldError.getDefaultMessage();
+                        }
                 ));
         
         return ResponseEntity.badRequest()
                 .body(ApiResponse.validationError(
-                        errors.values().stream().collect(Collectors.toList())
+                        new ArrayList<>(errors.values())
                 ));
     }
+
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceNotFoundException(
@@ -77,8 +84,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         });
         
         return new ResponseEntity<>(
-                ApiResponse.error("Validation failed", 
-                        errors.values().stream().collect(Collectors.toList()),
+                ApiResponse.error("Validation failed",
+                        new ArrayList<>(errors.values()),
                         HttpStatus.BAD_REQUEST),
                 HttpStatus.BAD_REQUEST
         );

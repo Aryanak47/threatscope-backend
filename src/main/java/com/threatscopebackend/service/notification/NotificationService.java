@@ -1,6 +1,6 @@
-package com.threatscope.service.notification;
+package com.threatscopebackend.service.notification;
 
-import com.threatscope.entity.BreachAlert;
+import com.threatscopebackend.entity.postgresql.BreachAlert;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.SimpleMailMessage;
@@ -14,14 +14,14 @@ import org.springframework.web.client.RestTemplate;
 public class NotificationService {
     
     private final JavaMailSender mailSender;
-    private final RestTemplate restTemplate;
+//    private final RestTemplate restTemplate;
     
     public boolean sendEmailAlert(BreachAlert alert) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setTo(alert.getUser().getEmail());
-            message.setSubject(alert.getAlertTitle());
-            message.setText(alert.getAlertMessage());
+            message.setSubject(alert.getTitle());
+            message.setText(alert.getDescription());
             message.setFrom("noreply@threatscope.com");
             
             mailSender.send(message);

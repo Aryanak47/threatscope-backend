@@ -1,4 +1,4 @@
-package com.threatscope.entity.postgresql;
+package com.threatscopebackend.entity.postgresql;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -66,9 +66,6 @@ public class SearchHistory {
     @Column(name = "saved_name")
     private String savedName;
     
-    @Column(name = "tags")
-    private String[] tags;
-    
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
     
@@ -90,9 +87,6 @@ public class SearchHistory {
     
     @Column(name = "is_shared")
     private boolean isShared = false;
-    
-    @Column(name = "shared_with_emails")
-    private String[] sharedWithEmails;
     
     @Column(name = "search_metadata", columnDefinition = "TEXT")
     private String searchMetadata; // JSON string for additional search metadata

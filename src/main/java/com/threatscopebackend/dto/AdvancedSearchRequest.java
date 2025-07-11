@@ -1,4 +1,4 @@
-package com.threatscope.dto;
+package com.threatscopebackend.dto;
 
 import lombok.Data;
 import lombok.Builder;
@@ -21,7 +21,7 @@ public class AdvancedSearchRequest {
     
     private int size = 20;
     
-    private String sortBy = "dateDiscovered";
+    private String sortBy = "timestamp";
     
     private String sortDirection = "desc";
     

@@ -1,6 +1,6 @@
 package com.threatscopebackend.repository.postgresql;
 
-import com.threatscope.entity.postgresql.Role;
+import com.threatscopebackend.entity.postgresql.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

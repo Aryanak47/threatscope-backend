@@ -2,8 +2,8 @@ package com.threatscopebackend.service.audit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.threatscope.entity.postgresql.AuditLog;
-import com.threatscope.repository.postgresql.AuditLogRepository;
+
+import com.threatscopebackend.entity.postgresql.AuditLog;
 import com.threatscopebackend.entity.postgresql.User;
 import com.threatscopebackend.repository.postgresql.UserRepository;
 import lombok.RequiredArgsConstructor;

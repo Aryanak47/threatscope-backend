@@ -1,17 +1,19 @@
 package com.threatscopebackend.security;
 
-
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.convert.DurationUnit;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.security.Key;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
 
 @Slf4j
@@ -21,11 +23,13 @@ public class JwtTokenProvider {
     @Value("${app.jwt.secret}")
     private String jwtSecret;
 
-    @Value("${app.jwt.expiration-in-ms}")
-    private int jwtExpirationInMs;
+    @Value("${app.jwt.expiration}")
+    @DurationUnit(java.time.temporal.ChronoUnit.MILLIS)
+    private Duration jwtExpiration;
 
-    @Value("${app.jwt.refresh-expiration-in-ms}")
-    private int refreshExpirationInMs;
+    @Value("${app.jwt.refresh-expiration}")
+    @DurationUnit(java.time.temporal.ChronoUnit.MILLIS)
+    private Duration refreshExpiration;
 
     private Key getSigningKey() {
         byte[] keyBytes = jwtSecret.getBytes();
@@ -38,27 +42,26 @@ public class JwtTokenProvider {
     }
 
     public String generateTokenFromUserId(Long userId) {
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + jwtExpirationInMs);
+        Instant now = Instant.now();
+        Instant expiryDate = now.plus(jwtExpiration);
 
         return Jwts.builder()
                 .subject(Long.toString(userId))
-                .issuedAt(now)
-                .expiration(expiryDate)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiryDate))
                 .signWith(getSigningKey())
                 .compact();
     }
 
     public String generateRefreshToken(Authentication authentication) {
         UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
-
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + refreshExpirationInMs);
+        Instant now = Instant.now();
+        Instant expiryDate = now.plus(refreshExpiration);
 
         return Jwts.builder()
                 .subject(Long.toString(userPrincipal.getId()))
-                .issuedAt(now)
-                .expiration(expiryDate)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiryDate))
                 .signWith(getSigningKey())
                 .compact();
     }

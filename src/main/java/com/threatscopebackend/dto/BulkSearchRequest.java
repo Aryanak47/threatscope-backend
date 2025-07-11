@@ -1,4 +1,4 @@
-package com.threatscope.dto;
+package com.threatscopebackend.dto;
 
 import lombok.Data;
 import lombok.Builder;

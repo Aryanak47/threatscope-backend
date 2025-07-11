@@ -1,4 +1,4 @@
-package com.threatscope.entity.postgresql;
+package com.threatscopebackend.entity.postgresql;
 
 import jakarta.persistence.*;
 import lombok.Data;

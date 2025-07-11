@@ -1,9 +1,9 @@
 package com.threatscopebackend.security;
 
 
-import com.threatscope.exception.ResourceNotFoundException;
 
 import com.threatscopebackend.entity.postgresql.User;
+import com.threatscopebackend.exception.ResourceNotFoundException;
 import com.threatscopebackend.repository.postgresql.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;

@@ -3,12 +3,13 @@ package com.threatscopebackend.service.core;
 
 import com.threatscope.dto.request.PasswordResetRequest;
 import com.threatscope.dto.request.RegisterRequest;
-import com.threatscope.entity.postgresql.Role;
-import com.threatscope.exception.BadRequestException;
-import com.threatscope.exception.ResourceNotFoundException;
+
 import com.threatscopebackend.dto.request.LoginRequest;
 import com.threatscopebackend.dto.response.AuthResponse;
+import com.threatscopebackend.entity.postgresql.Role;
 import com.threatscopebackend.entity.postgresql.User;
+import com.threatscopebackend.exception.BadRequestException;
+import com.threatscopebackend.exception.ResourceNotFoundException;
 import com.threatscopebackend.repository.postgresql.RoleRepository;
 import com.threatscopebackend.repository.postgresql.UserRepository;
 import com.threatscopebackend.security.JwtTokenProvider;

@@ -106,4 +106,20 @@ public class UserPrincipal implements UserDetails {
     public int hashCode() {
         return Objects.hash(id);
     }
+    
+    /**
+     * Creates an anonymous user with minimal privileges
+     * @return UserPrincipal representing an anonymous user
+     */
+    public static UserPrincipal anonymousUser() {
+        return new UserPrincipal(
+                null, // id
+                "Anonymous User",
+                "anonymous@threatscope.com",
+                "anonymous@threatscope.com",
+                null, // no password
+                Collections.singletonList(new SimpleGrantedAuthority("ROLE_ANONYMOUS")),
+                true
+        );
+    }
 }

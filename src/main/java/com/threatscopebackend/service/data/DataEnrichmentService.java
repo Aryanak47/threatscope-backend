@@ -1,8 +1,8 @@
-package com.threatscope.service.data;
+package com.threatscopebackend.service.data;
 
-import com.threatscope.document.StealerLog;
-import com.threatscope.repository.mongo.StealerLogRepository;
-import com.threatscope.service.ElasticsearchSyncService;
+
+import com.threatscopebackend.document.StealerLog;
+import com.threatscopebackend.repository.mongo.StealerLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 public class DataEnrichmentService {
 
     private final StealerLogRepository stealerLogRepository;
-    private final ElasticsearchSyncService elasticsearchSyncService;
+//    private final ElasticsearchSyncService elasticsearchSyncService;
     
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
@@ -28,34 +28,34 @@ public class DataEnrichmentService {
 
 //    @Scheduled(fixedRate = 300000) // Run every 5 minutes
     @Async
-    public void processUnprocessedRecords() {
-        log.info("Starting data enrichment process");
-        
-        List<StealerLog> unprocessedRecords = stealerLogRepository.findByProcessedFalse();
-        
-        if (unprocessedRecords.isEmpty()) {
-            log.debug("No unprocessed records found");
-            return;
-        }
-        
-        log.info("Found {} unprocessed records to enrich", unprocessedRecords.size());
-        
-        for (StealerLog record : unprocessedRecords) {
-            try {
-                enrichRecord(record);
-                record.setProcessed(true);
-                record.setUpdatedAt(LocalDateTime.now());
-                stealerLogRepository.save(record);
-                
-                elasticsearchSyncService.syncRecord(record);
-                
-            } catch (Exception e) {
-                log.error("Failed to enrich record {}: {}", record.getId(), e.getMessage());
-            }
-        }
-        
-        log.info("Completed data enrichment for {} records", unprocessedRecords.size());
-    }
+//    public void processUnprocessedRecords() {
+//        log.info("Starting data enrichment process");
+//
+//        List<StealerLog> unprocessedRecords = stealerLogRepository.findByProcessedFalse();
+//
+//        if (unprocessedRecords.isEmpty()) {
+//            log.debug("No unprocessed records found");
+//            return;
+//        }
+//
+//        log.info("Found {} unprocessed records to enrich", unprocessedRecords.size());
+//
+//        for (StealerLog record : unprocessedRecords) {
+//            try {
+//                enrichRecord(record);
+////                record.setProcessed(true);
+//                record.setUpdatedAt(LocalDateTime.now());
+//                stealerLogRepository.save(record);
+//
+////                elasticsearchSyncService.syncRecord(record);
+//
+//            } catch (Exception e) {
+//                log.error("Failed to enrich record {}: {}", record.getId(), e.getMessage());
+//            }
+//        }
+//
+//        log.info("Completed data enrichment for {} records", unprocessedRecords.size());
+//    }
 
     public void enrichRecord(StealerLog record) {
         if (record.getUrl() != null && record.getDomain() == null) {
@@ -65,16 +65,16 @@ public class DataEnrichmentService {
         
         if (record.getLogin() != null) {
             boolean isEmail = EMAIL_PATTERN.matcher(record.getLogin()).matches();
-            record.setIsEmail(isEmail);
+//            record.setIsEmail(isEmail);
             
             if (isEmail) {
                 String[] parts = record.getLogin().split("@");
                 if (parts.length == 2) {
-                    record.setUsername(parts[0]);
-                    record.setEmailDomain(parts[1]);
+//                    record.setUsername(parts[0]);
+//                    record.setEmailDomain(parts[1]);
                 }
             } else {
-                record.setUsername(record.getLogin());
+//                record.setUsername(record.getLogin());
             }
         }
         
@@ -82,13 +82,13 @@ public class DataEnrichmentService {
             record.setCreatedAt(LocalDateTime.now());
         }
         
-        if (record.getTimestamp() == null) {
-            record.setTimestamp(LocalDateTime.now());
-        }
-        
-        if (record.getSeverity() == null) {
-            record.setSeverity(calculateSeverity(record));
-        }
+//        if (record.getTimestamp() == null) {
+//            record.setTimestamp(LocalDateTime.now());
+//        }
+//
+//        if (record.getSeverity() == null) {
+//            record.setSeverity(calculateSeverity(record));
+//        }
     }
 
     private String extractDomainFromUrl(String urlString) {
@@ -111,15 +111,15 @@ public class DataEnrichmentService {
         }
     }
 
-    private String calculateSeverity(StealerLog record) {
-        if (record.getIsEmail() != null && record.getIsEmail()) {
-            return "HIGH";
-        } else if (record.getDomain() != null && isHighValueDomain(record.getDomain())) {
-            return "CRITICAL";
-        } else {
-            return "MEDIUM";
-        }
-    }
+//    private String calculateSeverity(StealerLog record) {
+//        if (record.getIsEmail() != null && record.getIsEmail()) {
+//            return "HIGH";
+//        } else if (record.getDomain() != null && isHighValueDomain(record.getDomain())) {
+//            return "CRITICAL";
+//        } else {
+//            return "MEDIUM";
+//        }
+//    }
 
     private boolean isHighValueDomain(String domain) {
         String[] highValueDomains = {
@@ -143,11 +143,11 @@ public class DataEnrichmentService {
                 .orElseThrow(() -> new RuntimeException("Record not found: " + recordId));
         
         enrichRecord(record);
-        record.setProcessed(true);
+//        record.setProcessed(true);
         record.setUpdatedAt(LocalDateTime.now());
         stealerLogRepository.save(record);
         
-        elasticsearchSyncService.syncRecord(record);
+//        elasticsearchSyncService.syncRecord(record);
         
         log.info("Manually enriched record: {}", recordId);
     }

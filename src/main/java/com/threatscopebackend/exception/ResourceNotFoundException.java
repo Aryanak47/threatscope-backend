@@ -1,8 +1,10 @@
-package com.threatscope.exception;
+package com.threatscopebackend.exception;
 
+import lombok.Getter;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
+@Getter
 @ResponseStatus(HttpStatus.NOT_FOUND)
 public class ResourceNotFoundException extends RuntimeException {
     
@@ -23,16 +25,5 @@ public class ResourceNotFoundException extends RuntimeException {
         this.fieldName = null;
         this.fieldValue = null;
     }
-    
-    public String getResourceName() {
-        return resourceName;
-    }
-    
-    public String getFieldName() {
-        return fieldName;
-    }
-    
-    public Object getFieldValue() {
-        return fieldValue;
-    }
+
 }

@@ -1,4 +1,4 @@
-package com.threatscope.entity.postgresql;
+package com.threatscopebackend.entity.postgresql;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -70,10 +70,7 @@ public class MonitoringItem {
     private boolean notifyOnNewBreach = true;
     private boolean notifyOnChange = false;
     private boolean notifyOnError = true;
-    
-    private String[] notificationEmails;
-    private String[] notificationWebhooks;
-    private String[] tags;
+
     
     @Column(columnDefinition = "TEXT")
     private String customNote;

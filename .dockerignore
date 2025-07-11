@@ -1,0 +1,45 @@
+# Build files
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE specific files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+*.pem
+*.key
+
+# Logs
+logs/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Docker Compose files
+docker-compose.override.yml
+
+# Local development files
+*.swp
+*.swo
+*~
+
+# Maven wrapper (if not using the wrapper)
+mvnw
+mvnw.cmd
+
+# Application specific
+HELP.md

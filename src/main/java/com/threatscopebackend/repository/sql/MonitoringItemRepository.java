@@ -1,6 +1,7 @@
-package com.threatscope.repository.sql;
+package com.threatscopebackend.repository.sql;
 
-import com.threatscope.entity.MonitoringItem;
+
+import com.threatscopebackend.entity.postgresql.MonitoringItem;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

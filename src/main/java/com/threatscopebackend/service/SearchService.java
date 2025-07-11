@@ -1,126 +1,161 @@
 package com.threatscopebackend.service;
 
-import com.stripe.service.SubscriptionService;
-import com.threatscope.document.StealerLog;
-
-import com.threatscope.elasticsearch.BreachDataIndex;
-import com.threatscope.entity.SearchHistory;
-import com.threatscope.exception.SearchException;
-
-
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-
+import com.threatscopebackend.config.ElasticsearchConfig;
+import com.threatscopebackend.document.StealerLog;
 import com.threatscopebackend.dto.SearchRequest;
 import com.threatscopebackend.dto.SearchResponse;
+import com.threatscopebackend.elasticsearch.BreachDataIndex;
+import com.threatscopebackend.entity.postgresql.SearchHistory;
 import com.threatscopebackend.repository.elasticsearch.BreachDataRepository;
 import com.threatscopebackend.repository.mongo.StealerLogRepository;
 import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.data.IndexNameProvider;
 import com.threatscopebackend.service.search.MultiIndexSearchService;
+import com.threatscopebackend.service.search.SearchFallbackService;
 import com.threatscopebackend.service.security.RateLimitService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
-import org.springframework.data.elasticsearch.core.*;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.SearchHit;
+import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
-import org.springframework.data.elasticsearch.core.query.*;
+import org.springframework.data.elasticsearch.core.query.Criteria;
+import org.springframework.data.elasticsearch.core.query.CriteriaQuery;
+import org.springframework.data.elasticsearch.core.query.Query;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class SearchService {
     private final BreachDataRepository breachDataRepository;
     private final StealerLogRepository stealerLogRepository;
-//    private final SearchHistoryRepository searchHistoryRepository;
     private final ElasticsearchOperations elasticsearchOperations;
     private final MultiIndexSearchService multiIndexSearchService;
     private final RateLimitService rateLimitService;
+    private final SearchFallbackService searchFallbackService;
+    private final ElasticsearchConfig elasticsearchConfig;
     private final IndexNameProvider indexNameProvider;
-//    private final UserService userService;
-//    private final SubscriptionService subscriptionService;
     private final ObjectMapper objectMapper;
+
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
     );
+    
+    private static final int MIN_QUERY_LENGTH = 2;
 
     /**
-     * Main search method - uses ES structure first, then fetches from MongoDB
+     * Main search method - uses ES structure first, then falls back to MongoDB if needed
      */
     public SearchResponse search(SearchRequest request, UserPrincipal user) {
         long startTime = System.currentTimeMillis();
 
+        // Validate query
+        if (request.getQuery() == null || request.getQuery().trim().length() < MIN_QUERY_LENGTH) {
+            throw new IllegalArgumentException("Search query must be at least " + MIN_QUERY_LENGTH + " characters long");
+        }
+
         // Check rate limits
-        rateLimitService.checkSearchLimit(user.getId());
+//        rateLimitService.checkSearchLimit(user.getId());
 
         try {
-            // Step 1: Search in Elasticsearch
-            Page<BreachDataIndex> esResults = performElasticsearchSearch(request);
+            // Step 1: First try Elasticsearch
+            try {
+                Page<BreachDataIndex> esResults = performElasticsearchSearch(request);
+                
+                if (esResults != null && !esResults.isEmpty()) {
+                    // If we have results from Elasticsearch, process and return them
+                    return buildSearchResponse(esResults, request, startTime);
+                }
+                log.info("No results found in Elasticsearch, falling back to MongoDB");
+            } catch (Exception e) {
+                log.warn("Elasticsearch search failed, falling back to MongoDB: {}", e.getMessage());
+            }
 
-            // Step 2: Extract MongoDB IDs from Elasticsearch results
-            Set<String> mongoIds = esResults.getContent().stream()
-                    .map(BreachDataIndex::getId)
-                    .collect(Collectors.toSet());
-
-            // Step 3: Fetch full documents from MongoDB
-            List<StealerLog> fullDocuments = stealerLogRepository.findByIdIn(mongoIds);
-
-            // Step 4: Convert to response format
-            List<SearchResponse.SearchResult> results = fullDocuments.stream()
-                    .map(this::convertToSearchResult)
-                    .collect(Collectors.toList());
-
-            // Step 5: Build response
-            SearchResponse response = SearchResponse.builder()
-                    .results(results)
-                    .totalResults(esResults.getTotalElements())
-                    .currentPage(esResults.getNumber())
-                    .totalPages(esResults.getTotalPages())
-                    .pageSize(esResults.getSize())
-                    .executionTimeMs(System.currentTimeMillis() - startTime)
-                    .query(request.getQuery())
-                    .searchType(request.getSearchType())
-                    .build();
-
-            // Step 6: Save search history
-//            saveSearchHistory(request, user, response);
-
-            return response;
+            // Step 2: Fallback to MongoDB search
+            SearchResponse mongoResponse = searchFallbackService.searchInMongoDB(request, user);
+            mongoResponse.setExecutionTimeMs(System.currentTimeMillis() - startTime);
+            return mongoResponse;
 
         } catch (Exception e) {
             log.error("Search failed for user {}: {}", user.getId(), e.getMessage(), e);
-            throw new SearchException("Search failed: " + e.getMessage(), e);
+            throw new RuntimeException("Search failed. Please try again later.", e);
         }
+    }
+    
+    /**
+     * Build search response from Elasticsearch results
+     */
+    private SearchResponse buildSearchResponse(Page<BreachDataIndex> esResults, SearchRequest request, long startTime) {
+        // Extract MongoDB IDs from Elasticsearch results
+        Set<String> mongoIds = esResults.getContent().stream()
+                .map(BreachDataIndex::getId)
+                .collect(Collectors.toSet());
+
+        // Fetch full documents from MongoDB
+        List<StealerLog> fullDocuments = stealerLogRepository.findByIdIn(mongoIds);
+
+        // Convert to response format, filtering out any empty Optionals
+        List<SearchResponse.SearchResult> results = fullDocuments.stream()
+                .map(this::convertToSearchResult)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toList());
+
+        // Build response
+        return SearchResponse.builder()
+                .results(results)
+                .totalResults(esResults.getTotalElements())
+                .currentPage(esResults.getNumber())
+                .totalPages(esResults.getTotalPages())
+                .pageSize(esResults.getSize())
+                .executionTimeMs(System.currentTimeMillis() - startTime)
+                .query(request.getQuery())
+                .searchType(request.getSearchType())
+                .build();
     }
 
     /**
      * Perform Elasticsearch search based on the request
      */
     private Page<BreachDataIndex> performElasticsearchSearch(SearchRequest request) {
+        Sort sort = getSortOrder(request.getSortBy(), request.getSortDirection());
+        log.debug("Using sort field: {}", sort);
         Pageable pageable = PageRequest.of(
                 request.getPage(),
                 request.getSize(),
-                getSortOrder(request.getSortBy(), request.getSortDirection())
+                sort
         );
+
 
         // Determine search strategy based on request
         return switch (request.getSearchType()) {
-            case EMAIL -> searchByLogin(request, pageable, true);
+            case EMAIL -> {
+                request.setSearchMode(SearchRequest.SearchMode.EXACT);
+                yield searchByLogin(request, pageable, true);
+            }
             case DOMAIN -> searchByDomain(request, pageable);
             case PASSWORD -> searchByPassword(request, pageable);
-            case USERNAME -> searchByLogin(request, pageable, false);
+            case USERNAME -> {
+                request.setSearchMode(SearchRequest.SearchMode.EXACT);
+                yield searchByLogin(request, pageable, false);
+            }
             case URL -> searchByUrl(request, pageable);
             case ADVANCED -> performAdvancedSearch(request, pageable);
-            default -> performAutoDetectSearch(request, pageable);
+            case AUTO -> performAutoDetectSearch(request, pageable);
+            default ->
+                    throw new IllegalArgumentException("Unsupported search type: " );
         };
     }
 
@@ -129,7 +164,9 @@ public class SearchService {
      * REFACTORED: Using Criteria API instead of QueryBuilders
      */
     private Page<BreachDataIndex> searchByLogin(SearchRequest request, Pageable pageable, boolean emailOnly) {
+        // Convert query to lowercase to match Elasticsearch storage
         String query = request.getQuery().toLowerCase().trim();
+        log.info("Searching for login (case-insensitive): {}", query);
 
         if (emailOnly && !EMAIL_PATTERN.matcher(query).matches()) {
             throw new IllegalArgumentException("Invalid email format");
@@ -166,11 +203,16 @@ public class SearchService {
         String password = request.getQuery().trim();
         String[] indices = indexNameProvider.getAllIndicesPattern();
 
-        Criteria criteria = new Criteria("password").matches(password);
-        Query searchQuery = new CriteriaQuery(criteria);
-        searchQuery.setPageable(pageable);
+        try {
+            Criteria criteria = new Criteria("password").matches(password);
+            Query searchQuery = new CriteriaQuery(criteria);
+            searchQuery.setPageable(pageable);
 
-        return executeSearch(searchQuery, indices, pageable);
+            return executeSearch(searchQuery, indices, pageable);
+        } catch (Exception e) {
+            log.error("Error in password search: {}", e.getMessage(), e);
+            return Page.empty();
+        }
     }
 
     /**
@@ -179,7 +221,12 @@ public class SearchService {
     private Page<BreachDataIndex> searchByDomain(SearchRequest request, Pageable pageable) {
         String domain = request.getQuery().toLowerCase().trim();
         int monthsBack = getMonthsBackFromFilters(request.getFilters());
-        return multiIndexSearchService.searchUrlAcrossIndices("*" + domain + "*", pageable, monthsBack);
+        try {
+            return multiIndexSearchService.searchUrlAcrossIndices("*" + domain + "*", pageable, monthsBack);
+        } catch (Exception e) {
+            log.error("Error in domain search: {}", e.getMessage(), e);
+            return Page.empty();
+        }
     }
 
     /**
@@ -191,7 +238,7 @@ public class SearchService {
         if (EMAIL_PATTERN.matcher(query).matches()) {
             request.setSearchType(SearchRequest.SearchType.EMAIL);
             return searchByLogin(request, pageable, true);
-        } else if (query.startsWith("http://") || query.startsWith("https://") || query.contains(".")) {
+        } else if (query.startsWith("http://") || query.startsWith("https://") || query.contains(".")) { // needs  to add other protocols like app://, android:// etc.
             request.setSearchType(SearchRequest.SearchType.URL);
             return searchByUrl(request, pageable);
         } else {
@@ -303,7 +350,7 @@ public class SearchService {
         String[] indices = generateIndexNames(monthsBack);
 
         // Using contains for wildcard-like behavior
-        Criteria criteria = new Criteria("login").contains(pattern);
+        Criteria criteria = new Criteria("login").matches(pattern);
         Query searchQuery = new CriteriaQuery(criteria);
         searchQuery.setPageable(pageable);
 
@@ -332,6 +379,10 @@ public class SearchService {
     private Page<BreachDataIndex> executeSearch(Query searchQuery, String[] indices, Pageable pageable) {
         try {
             IndexCoordinates indexCoordinates = IndexCoordinates.of(indices);
+            
+            // Log the query and sort details
+            log.debug("Executing search on indices: {}", (Object) indices);
+            log.debug("Sort: {}", pageable.getSort());
 
             SearchHits<BreachDataIndex> searchHits = elasticsearchOperations.search(
                     searchQuery, BreachDataIndex.class, indexCoordinates);
@@ -368,19 +419,46 @@ public class SearchService {
     }
 
     /**
-     * Generate index names for the last N months
+     * Generate index names for the last N months, checking if they exist
      */
     private String[] generateIndexNames(int monthsBack) {
         List<String> indices = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM");
 
-        for (int i = 0; i < monthsBack; i++) {
-            String month = now.minusMonths(i).format(formatter);
-            indices.add("breaches-" + month);
+        // Always include the latest index pattern
+        String currentMonthIndex = "breaches-" + now.format(formatter);
+        indices.add(currentMonthIndex);
+
+        // Check how many months back we have data
+        boolean previousMonthExists = true;
+        int monthsChecked = 1;
+        
+        // Check up to the requested number of months or until we can't find an index
+        while (previousMonthExists && monthsChecked < monthsBack) {
+            String monthIndex = "breaches-" + now.minusMonths(monthsChecked).format(formatter);
+            if (indexExists(monthIndex)) {
+                indices.add(monthIndex);
+                monthsChecked++;
+            } else {
+                previousMonthExists = false;
+            }
         }
 
+        log.debug("Generated {} indices for search: {}", indices.size(), indices);
         return indices.toArray(new String[0]);
+    }
+    
+    /**
+     * Check if an index exists in Elasticsearch
+     */
+    private boolean indexExists(String indexName) {
+        try {
+            return elasticsearchOperations.indexOps(IndexCoordinates.of(indexName)).exists();
+        } catch (Exception e) {
+            log.debug("Index check failed for {}: {}", indexName, e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -394,16 +472,29 @@ public class SearchService {
     }
 
     /**
-     * Convert StealerLog to SearchResult DTO
+     * Convert StealerLog to SearchResult DTO using the factory method
      */
-    private SearchResponse.SearchResult convertToSearchResult(StealerLog log) {
-        return SearchResponse.SearchResult.builder()
-                .id(log.getId())
-                .email(log.getLogin())
-                .url(log.getUrl())
-                .domain(log.getDomain())
-                .hasPassword(log.getPassword() != null && !log.getPassword().isEmpty())
-                .build();
+    private Optional<SearchResponse.SearchResult> convertToSearchResult(StealerLog log) {
+        return SearchResponse.SearchResult.fromStealerLog(log);
+    }
+
+    /**
+     * Convert StealerLog to BreachDataIndex for Elasticsearch
+     */
+
+    // Helper method to extract domain from URL
+    private String extractDomain(String url) {
+        if (url == null || url.isEmpty()) {
+            return "";
+        }
+        try {
+            URI uri = new URI(url);
+            String domain = uri.getHost();
+            return domain != null ? domain : "";
+        } catch (Exception e) {
+            log.warn("Failed to extract domain from URL: {}", url, e);
+            return "";
+        }
     }
 
     /**
@@ -417,7 +508,7 @@ public class SearchService {
             history.setQuery(request.getQuery());
             history.setFilters(request.getFilters() != null ?
                     objectMapper.writeValueAsString(request.getFilters()) : null);
-            history.setResultsCount(response.getTotalResults());
+//            history.setResultsCount(response.getTotalResults());
             history.setExecutionTimeMs(response.getExecutionTimeMs());
             history.setCreatedAt(LocalDateTime.now());
 

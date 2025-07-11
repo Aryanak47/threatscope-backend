@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+#  app:
+#    build:
+#      context: .
+#      dockerfile: docker/prod/Dockerfile
+#    container_name: threatscope-app
+#    restart: always
+#    environment:
+#      - SPRING_PROFILES_ACTIVE=prod
+#      - SPRING_DATASOURCE_URL=${DB_URL}
+#      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME}
+#      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+#      - APP_JWT_SECRET=${JWT_SECRET}
+#      - APP_JWT_EXPIRATION=${JWT_EXPIRATION}
+#      - APP_JWT_REFRESH_EXPIRATION=${JWT_REFRESH_EXPIRATION}
+#    ports:
+#      - "8080:8080"
+#    depends_on:
+#      - postgres
+#    networks:
+#      - threatscope-network
+#    healthcheck:
+#      test: ["CMD", "curl", "-f", "http://localhost:8080/api/actuator/health"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 3
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: threatscope-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - threatscope-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Uncomment if you want to use pgAdmin
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: threatscope-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - threatscope-network
+
+networks:
+  threatscope-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

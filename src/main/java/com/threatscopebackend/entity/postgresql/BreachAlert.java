@@ -1,4 +1,4 @@
-package com.threatscope.entity.postgresql;
+package com.threatscopebackend.entity.postgresql;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -96,7 +96,4 @@ public class BreachAlert {
     
     @Column(name = "notification_sent_at")
     private LocalDateTime notificationSentAt;
-    
-    @Column(name = "notification_channels")
-    private String[] notificationChannels; // EMAIL, SMS, SLACK, etc.
 }

@@ -1,6 +1,7 @@
-package com.threatscope.repository.sql;
+package com.threatscopebackend.repository.sql;
 
-import com.threatscope.entity.BreachAlert;
+
+import com.threatscopebackend.entity.postgresql.BreachAlert;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,10 +16,8 @@ public interface BreachAlertRepository extends JpaRepository<BreachAlert, Long> 
     Page<BreachAlert> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
     
     Optional<BreachAlert> findByIdAndUserId(Long id, Long userId);
-    
-    boolean existsByMonitoringItemIdAndBreachId(Long monitoringItemId, String breachId);
-    
-    long countByUserIdAndStatus(Long userId, BreachAlert.AlertStatus status);
+
+    long countByUserIdAndStatus(Long userId, BreachAlert.Status status);
     
     long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
 }

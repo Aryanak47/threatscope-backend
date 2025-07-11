@@ -1,4 +1,4 @@
-package com.threatscope.document;
+package com.threatscopebackend.document;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -11,6 +11,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndex;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Document(collection = "stealer_logs")
 @Data
@@ -20,7 +21,7 @@ import java.util.Map;
                def = "{'login': 1, 'password': 1, 'url': 1}", 
                unique = true)
 public class StealerLog {
-    @Id
+    @Field("id")
     private String id;
 
     @Field("login")
@@ -32,26 +33,12 @@ public class StealerLog {
     @Field("url")
     private String url;
 
-    @Field("timestamp")
-    private LocalDateTime timestamp;
 
     @Field("metadata")
-    private Map<String, Object> metadata;
+    private String metadata;
 
     @Field("domain")
     private String domain;
-
-    @Field("is_email")
-    private Boolean isEmail;
-
-    @Field("username")
-    private String username;
-
-    @Field("email_domain")
-    private String emailDomain;
-
-    @Field("processed")
-    private Boolean processed = false;
 
     @Field("created_at")
     private LocalDateTime createdAt;
@@ -59,6 +46,7 @@ public class StealerLog {
     @Field("updated_at")
     private LocalDateTime updatedAt;
 
-    @Field("severity")
-    private String severity; // Possible values: LOW, MEDIUM, HIGH, CRITICAL
+    @Field("source_db")
+    private String source;
+
 }

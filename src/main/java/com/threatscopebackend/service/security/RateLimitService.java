@@ -3,6 +3,7 @@ package com.threatscopebackend.service.security;
 
 import com.threatscopebackend.entity.postgresql.Subscription;
 import com.threatscopebackend.entity.postgresql.User;
+import com.threatscopebackend.service.core.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;

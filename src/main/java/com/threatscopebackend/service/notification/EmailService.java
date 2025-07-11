@@ -24,13 +24,13 @@ public class EmailService {
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
 
-    @Value("${app.email.from}")
+//    @Value("${app.email.from}")
     private String fromEmail;
 
-    @Value("${app.base-url}")
+//    @Value("${app.base-url}")
     private String baseUrl;
 
-    @Value("${app.email.enabled:true}")
+//    @Value("${app.email.enabled:true}")
     private boolean emailEnabled;
 
     @Async

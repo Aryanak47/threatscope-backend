@@ -1,6 +1,6 @@
 package com.threatscopebackend.repository.mongo;
 
-import com.threatscope.document.StealerLog;
+import com.threatscopebackend.document.StealerLog;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -24,11 +24,18 @@ public interface StealerLogRepository extends MongoRepository<StealerLog, String
     // Basic search methods for fallback when ES is down
     List<StealerLog> findByLogin(String login);
     
+    // Case-insensitive search methods for fallback
+    List<StealerLog> findByLoginContainingIgnoreCase(String login);
+    List<StealerLog> findByDomainContainingIgnoreCase(String domain);
+    List<StealerLog> findByUrlContainingIgnoreCase(String url);
+    
+    // Combined search for general queries
+    List<StealerLog> findByLoginContainingIgnoreCaseOrUrlContainingIgnoreCase(String login, String url);
+    
     List<StealerLog> findByUrl(String url);
     
     // For data enrichment processing
-    List<StealerLog> findByProcessedFalse();
-    
+
     // Statistics queries
     long count();
     

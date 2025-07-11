@@ -1,7 +1,7 @@
 package com.threatscopebackend.service.search;
 
-import com.threatscope.elasticsearch.BreachDataIndex;
-import com.threatscope.service.data.IndexNameProvider;
+import com.threatscopebackend.elasticsearch.BreachDataIndex;
+import com.threatscopebackend.service.data.IndexNameProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;

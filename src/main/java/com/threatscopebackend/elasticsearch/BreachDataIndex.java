@@ -1,4 +1,4 @@
-package com.threatscope.elasticsearch;
+package com.threatscopebackend.elasticsearch;
 
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -12,7 +12,7 @@ import org.springframework.data.elasticsearch.annotations.DateFormat;
 import java.time.LocalDateTime;
 import java.util.Map;
 
-@Document(indexName = "#{@indexNameProvider.getCurrentMonthIndex()}")
+@Document(indexName = "breaches-*")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -30,9 +30,10 @@ public class BreachDataIndex {
     @Field(type = FieldType.Text)
     private String url;
 
-    @Field(type = FieldType.Date, format = DateFormat.date_time)
+    @Field(type = FieldType.Date, format = {},
+           pattern = "uuuu-MM-dd'T'HH:mm:ss.SSSSSS")
     private LocalDateTime timestamp;
 
-    @Field(type = FieldType.Object, enabled = true)
-    private Map<String, Object> metadata;
+    @Field(type = FieldType.Text)
+    private String metadata;
 }

@@ -1,6 +1,6 @@
 package com.threatscopebackend.repository.elasticsearch;
 
-import com.threatscope.elasticsearch.BreachDataIndex;
+import com.threatscopebackend.elasticsearch.BreachDataIndex;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.elasticsearch.annotations.Query;
@@ -8,7 +8,6 @@ import org.springframework.data.elasticsearch.repository.ElasticsearchRepository
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Repository
 public interface BreachDataRepository extends ElasticsearchRepository<BreachDataIndex, String> {

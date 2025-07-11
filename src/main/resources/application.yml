@@ -16,16 +16,70 @@ spring:
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
+  data:
+    mongodb:
+      uri: mongodb://admin:PASSWORD@localhost:27017/your_database_name?replicaSet=rs0&authSource=admin
+      username: ${MONGO_USERNAME:admin}
+      password: ${MONGO_PASSWORD:PASSWORD}
   profiles:
     active: dev
 
 # Server Configuration
 server:
-  port: 8080
+  port: 8081
   servlet:
     context-path: /api
 
 # Logging Configuration
+# API Documentation - Common settings
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  show-actuator: true
+  use-root-path: false
+  # These settings will be overridden by profile-specific configurations
+  swagger-ui:
+    enabled: false
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    doc-expansion: none
+
+---
+# Development profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+# Enable Swagger UI in development
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+---
+# Production profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+# Disable Swagger UI in production
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: false
+
+# Disable Elasticsearch health check
+management:
+  health:
+    elasticsearch:
+      enabled: false
+
 logging:
   level:
     root: INFO

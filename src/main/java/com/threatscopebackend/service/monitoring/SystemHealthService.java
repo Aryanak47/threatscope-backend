@@ -1,6 +1,7 @@
-package com.threatscope.service.monitoring;
+package com.threatscopebackend.service.monitoring;
 
 import com.threatscope.dto.SystemHealthResponse;
+import com.threatscopebackend.elasticsearch.BreachDataIndex;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
@@ -16,7 +17,7 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class SystemHealthService {
+class SystemHealthService {
     
     private final DataSource dataSource;
     private final MongoTemplate mongoTemplate;
@@ -79,7 +80,7 @@ public class SystemHealthService {
     
     private boolean checkElasticsearchHealth() {
         try {
-            return elasticsearchOperations.indexOps(com.threatscope.elasticsearch.BreachDataIndex.class).exists();
+            return elasticsearchOperations.indexOps(BreachDataIndex.class).exists();
         } catch (Exception e) {
             log.warn("Elasticsearch health check failed: {}", e.getMessage());
             return false;
@@ -127,7 +128,7 @@ public class SystemHealthService {
     private Map<String, Object> getElasticsearchStatus() {
         Map<String, Object> status = new HashMap<>();
         try {
-            boolean exists = elasticsearchOperations.indexOps(com.threatscope.elasticsearch.BreachDataIndex.class).exists();
+            boolean exists = elasticsearchOperations.indexOps(BreachDataIndex.class).exists();
             status.put("status", exists ? "UP" : "DOWN");
             status.put("details", Map.of("index_exists", exists));
         } catch (Exception e) {
