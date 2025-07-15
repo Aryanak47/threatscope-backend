@@ -39,7 +39,7 @@ public class MultiIndexSearchService {
     public Page<BreachDataIndex> searchAcrossIndices(String query, Pageable pageable, int monthsBack) {
         log.debug("Searching across indices for query: {}, monthsBack: {}", query, monthsBack);
 
-        String[] indices = indexNameProvider.getIndicesForLastMonths(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
 
         // Using Criteria API - type-safe and maintainable
         Criteria criteria = new Criteria("login").contains(query)
@@ -60,7 +60,7 @@ public class MultiIndexSearchService {
     public Page<BreachDataIndex> searchLoginAcrossIndices(String login, Pageable pageable, int monthsBack) {
         log.debug("Searching login: {} across {} months", login, monthsBack);
 
-        String[] indices = indexNameProvider.getIndicesForLastMonths(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
 
         // Exact match using .keyword field
         Criteria criteria = Criteria.where("login.keyword").is(login);
@@ -79,7 +79,7 @@ public class MultiIndexSearchService {
     public Page<BreachDataIndex> searchUrlAcrossIndices(String urlPattern, Pageable pageable, int monthsBack) {
         log.debug("Searching URL pattern: {} across {} months", urlPattern, monthsBack);
 
-        String[] indices = indexNameProvider.getIndicesForLastMonths(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
 
         // Pattern matching for URLs
         Criteria criteria = Criteria.where("url").contains(urlPattern);
@@ -119,7 +119,7 @@ public class MultiIndexSearchService {
         log.debug("Advanced search - query: {}, domain: {}, from: {}, to: {}",
                 query, domain, from, to);
 
-        String[] indices = indexNameProvider.getIndicesForLastMonths(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
 
         // Build complex criteria with multiple conditions
         Criteria criteria = Criteria.where("login").contains(query);

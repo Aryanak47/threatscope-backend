@@ -6,6 +6,7 @@ import com.threatscopebackend.dto.SearchResponse;
 import com.threatscopebackend.security.CurrentUser;
 import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.SearchService;
+import com.threatscopebackend.service.LazyMetricsService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -27,6 +28,7 @@ import java.util.Map;
 public class SearchController {
 
     private final SearchService searchService;
+    private final LazyMetricsService lazyMetricsService;
 
 
     /**
@@ -37,6 +39,11 @@ public class SearchController {
             @Valid @RequestBody SearchRequest request,
             @CurrentUser UserPrincipal user,
             HttpServletRequest httpRequest) {
+
+        // Handle anonymous users for demo/testing
+        if (user == null) {
+            user = UserPrincipal.anonymousUser();
+        }
 
         log.info("Search request from user {}: {} (type: {})",
                 user.getId(), request.getQuery(), request.getSearchType());
@@ -87,7 +94,11 @@ public class SearchController {
             @RequestParam(defaultValue = "autoDetect") @Pattern(regexp = "^(?i)(Auto|email|url|password|username|domain|advanced)$",
                                                       message = "Search type must be one of: autoDetect, email, url, password, username, domain, or advanced (case insensitive)") String searchType,
             @CurrentUser UserPrincipal user) {
-        user = user != null ? user : UserPrincipal.anonymousUser();
+            
+        // Handle anonymous users for demo/testing
+        if (user == null) {
+            user = UserPrincipal.anonymousUser();
+        }
 
         try {
             // Validate query parameter
@@ -280,6 +291,35 @@ public class SearchController {
 //
 //        return ResponseEntity.ok(response);
 //    }
+
+    /**
+     * Get detailed metrics for a specific source (lazy loaded)
+     */
+    @GetMapping("/metrics/{source}")
+    public ResponseEntity<?> getSourceMetrics(
+            @PathVariable String source,
+            @CurrentUser UserPrincipal user) {
+            
+        // Handle anonymous users for demo/testing
+        if (user == null) {
+            user = UserPrincipal.anonymousUser();
+        }
+
+        try {
+            log.info("Metrics request from user {} for source: {}", user.getId(), source);
+            
+            LazyMetricsService.SourceDetailedMetrics metrics = lazyMetricsService.calculateDetailedMetrics(source);
+            
+            return ResponseEntity.ok(metrics);
+
+        } catch (Exception e) {
+            log.error("Metrics calculation failed for source {}: {}", source, e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "error",
+                    "message", "Failed to calculate metrics for source: " + source
+            ));
+        }
+    }
 
     // Helper methods
     private String getClientIpAddress(HttpServletRequest request) {

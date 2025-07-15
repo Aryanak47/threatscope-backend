@@ -39,6 +39,10 @@ public interface StealerLogRepository extends MongoRepository<StealerLog, String
     // Statistics queries
     long count();
     
+    // Count by source field (for lazy metrics)
+    @Query(value = "{'source_db': ?0}", count = true)
+    long countBySource(String source);
+    
     @Query("{'timestamp': {'$gte': ?0}}")
     List<StealerLog> findByTimestampAfter(LocalDateTime timestamp);
     

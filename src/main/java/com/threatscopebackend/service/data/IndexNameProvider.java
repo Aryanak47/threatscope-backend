@@ -1,8 +1,14 @@
 package com.threatscopebackend.service.data;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Provides index naming and management for Elasticsearch indices.
@@ -11,9 +17,12 @@ import java.time.format.DateTimeFormatter;
  * with any existing code that might use it.
  */
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class IndexNameProvider {
+    private final ElasticsearchOperations elasticsearchOperations;
     
-    public static final String BREACH_INDEX_PREFIX = "breach-data";
+    public static final String BREACH_INDEX_PREFIX = "breaches-";
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
     
     /**
@@ -40,7 +49,40 @@ public class IndexNameProvider {
     /**
      * Gets indices for the last N months (returns the main index in the new version)
      */
-    public String[] getIndicesForLastMonths(int monthsBack) {
-        return new String[]{BREACH_INDEX_PREFIX};
+    public String[] generateIndexNames(int monthsBack) {
+        List<String> indices = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM");
+
+        // Always include the latest index pattern
+        String currentMonthIndex = "breaches-" + now.format(formatter);
+        indices.add(currentMonthIndex);
+
+        // Check how many months back we have data
+        boolean previousMonthExists = true;
+        int monthsChecked = 1;
+
+        // Check up to the requested number of months or until we can't find an index
+        while (previousMonthExists && monthsChecked < monthsBack) {
+            String monthIndex = "breaches-" + now.minusMonths(monthsChecked).format(formatter);
+            if (indexExists(monthIndex)) {
+                indices.add(monthIndex);
+                monthsChecked++;
+            } else {
+                previousMonthExists = false;
+            }
+        }
+
+        log.debug("Generated {} indices for search: {}", indices.size(), indices);
+        return indices.toArray(new String[0]);
+    }
+
+    private boolean indexExists(String indexName) {
+        try {
+            return elasticsearchOperations.indexOps(IndexCoordinates.of(indexName)).exists();
+        } catch (Exception e) {
+            log.debug("Index check failed for {}: {}", indexName, e.getMessage());
+            return false;
+        }
     }
 }

@@ -1,12 +1,10 @@
 package com.threatscopebackend.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.threatscopebackend.config.ElasticsearchConfig;
 import com.threatscopebackend.document.StealerLog;
 import com.threatscopebackend.dto.SearchRequest;
 import com.threatscopebackend.dto.SearchResponse;
 import com.threatscopebackend.elasticsearch.BreachDataIndex;
-import com.threatscopebackend.entity.postgresql.SearchHistory;
 import com.threatscopebackend.repository.elasticsearch.BreachDataRepository;
 import com.threatscopebackend.repository.mongo.StealerLogRepository;
 import com.threatscopebackend.security.UserPrincipal;
@@ -28,8 +26,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.net.URI;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -46,7 +42,6 @@ public class SearchService {
     private final SearchFallbackService searchFallbackService;
     private final ElasticsearchConfig elasticsearchConfig;
     private final IndexNameProvider indexNameProvider;
-    private final ObjectMapper objectMapper;
 
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
@@ -95,7 +90,7 @@ public class SearchService {
     }
     
     /**
-     * Build search response from Elasticsearch results
+     * Build search response from Elasticsearch results with enhanced metrics
      */
     private SearchResponse buildSearchResponse(Page<BreachDataIndex> esResults, SearchRequest request, long startTime) {
         // Extract MongoDB IDs from Elasticsearch results
@@ -105,15 +100,15 @@ public class SearchService {
 
         // Fetch full documents from MongoDB
         List<StealerLog> fullDocuments = stealerLogRepository.findByIdIn(mongoIds);
-
-        // Convert to response format, filtering out any empty Optionals
+        // Convert full documents to search results
         List<SearchResponse.SearchResult> results = fullDocuments.stream()
-                .map(this::convertToSearchResult)
+                .map(this::convertToEnhancedSearchResult) // Pass null or appropriate metrics
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .collect(Collectors.toList());
 
-        // Build response
+
+        // Build response with comprehensive data
         return SearchResponse.builder()
                 .results(results)
                 .totalResults(esResults.getTotalElements())
@@ -347,7 +342,7 @@ public class SearchService {
      * REFACTORED: Using Criteria API instead of NativeSearchQueryBuilder
      */
     private Page<BreachDataIndex> searchLoginWithWildcard(String pattern, Pageable pageable, int monthsBack) {
-        String[] indices = generateIndexNames(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
 
         // Using contains for wildcard-like behavior
         Criteria criteria = new Criteria("login").matches(pattern);
@@ -362,7 +357,7 @@ public class SearchService {
      * REFACTORED: Using Criteria API for exact phrase matching
      */
     private Page<BreachDataIndex> performExactUrlSearch(String url, Pageable pageable, int monthsBack) {
-        String[] indices = generateIndexNames(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
 
         // Using exact match for URLs
         Criteria criteria = new Criteria("url.keyword").is(url);
@@ -418,48 +413,6 @@ public class SearchService {
         return 12; // Default to 12 months
     }
 
-    /**
-     * Generate index names for the last N months, checking if they exist
-     */
-    private String[] generateIndexNames(int monthsBack) {
-        List<String> indices = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM");
-
-        // Always include the latest index pattern
-        String currentMonthIndex = "breaches-" + now.format(formatter);
-        indices.add(currentMonthIndex);
-
-        // Check how many months back we have data
-        boolean previousMonthExists = true;
-        int monthsChecked = 1;
-        
-        // Check up to the requested number of months or until we can't find an index
-        while (previousMonthExists && monthsChecked < monthsBack) {
-            String monthIndex = "breaches-" + now.minusMonths(monthsChecked).format(formatter);
-            if (indexExists(monthIndex)) {
-                indices.add(monthIndex);
-                monthsChecked++;
-            } else {
-                previousMonthExists = false;
-            }
-        }
-
-        log.debug("Generated {} indices for search: {}", indices.size(), indices);
-        return indices.toArray(new String[0]);
-    }
-    
-    /**
-     * Check if an index exists in Elasticsearch
-     */
-    private boolean indexExists(String indexName) {
-        try {
-            return elasticsearchOperations.indexOps(IndexCoordinates.of(indexName)).exists();
-        } catch (Exception e) {
-            log.debug("Index check failed for {}: {}", indexName, e.getMessage());
-            return false;
-        }
-    }
 
     /**
      * Get sort order from parameters
@@ -472,9 +425,9 @@ public class SearchService {
     }
 
     /**
-     * Convert StealerLog to SearchResult DTO using the factory method
+     * Convert StealerLog to enhanced SearchResult DTO
      */
-    private Optional<SearchResponse.SearchResult> convertToSearchResult(StealerLog log) {
+    private Optional<SearchResponse.SearchResult> convertToEnhancedSearchResult(StealerLog log) {
         return SearchResponse.SearchResult.fromStealerLog(log);
     }
 
@@ -500,23 +453,23 @@ public class SearchService {
     /**
      * Save search history
      */
-    private void saveSearchHistory(SearchRequest request, UserPrincipal user, SearchResponse response) {
-        try {
-            SearchHistory history = new SearchHistory();
-//            history.setUser(userService.findById(user.getId()));
-            history.setSearchType(SearchHistory.SearchType.valueOf(request.getSearchType().name()));
-            history.setQuery(request.getQuery());
-            history.setFilters(request.getFilters() != null ?
-                    objectMapper.writeValueAsString(request.getFilters()) : null);
-//            history.setResultsCount(response.getTotalResults());
-            history.setExecutionTimeMs(response.getExecutionTimeMs());
-            history.setCreatedAt(LocalDateTime.now());
-
-//            searchHistoryRepository.save(history);
-        } catch (Exception e) {
-            log.warn("Failed to save search history for user {}: {}", user.getId(), e.getMessage());
-        }
-    }
+//    private void saveSearchHistory(SearchRequest request, UserPrincipal user, SearchResponse response) {
+//        try {
+//            SearchHistory history = new SearchHistory();
+////            history.setUser(userService.findById(user.getId()));
+//            history.setSearchType(SearchHistory.SearchType.valueOf(request.getSearchType().name()));
+//            history.setQuery(request.getQuery());
+//            history.setFilters(request.getFilters() != null ?
+//                    new ObjectMapper().writeValueAsString(request.getFilters()) : null);
+////            history.setResultsCount(response.getTotalResults());
+//            history.setExecutionTimeMs(response.getExecutionTimeMs());
+//            history.setCreatedAt(LocalDateTime.now());
+//
+////            searchHistoryRepository.save(history);
+//        } catch (Exception e) {
+//            log.warn("Failed to save search history for user {}: {}", user.getId(), e.getMessage());
+//        }
+//    }
 
     /**
      * NEW: Count search results without retrieving documents
