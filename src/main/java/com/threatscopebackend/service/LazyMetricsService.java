@@ -84,13 +84,13 @@ public class LazyMetricsService {
             }
             
             // 2. Password Statistics
-            PasswordStats passwordStats = calculatePasswordStats(source);
+            PasswordStats passwordStats = calculatePasswordStats(actualFieldName, source);
             
             // 3. Domain Distribution
-            Map<String, Long> domainDistribution = calculateDomainDistribution(source);
+            Map<String, Long> domainDistribution = calculateDomainDistribution(actualFieldName, source);
             
-            // 4. Data Quality Assessment
-            DataQualityAssessment qualityAssessment = calculateDataQuality(source);
+            // 4. Data Quality Assessment (overall, not source-specific)
+            DataQualityAssessment qualityAssessment = calculateDataQuality();
             
             // 5. Extract breach date from source name
             LocalDateTime breachDate = extractBreachDateFromSource(source);
@@ -120,46 +120,51 @@ public class LazyMetricsService {
     }
     
     /**
-     * Calculate password statistics using separate queries for better compatibility
-     */
-    private PasswordStats calculatePasswordStats(String source) {
-        try {
-            // Total count
-            long totalCount = mongoTemplate.count(
-                Query.query(Criteria.where("source_db").is(source)), 
-                StealerLog.class
-            );
-            
-            // Count with passwords (not null, not empty, not just whitespace)
-            long withPassword = mongoTemplate.count(
-                Query.query(Criteria.where("source_db").is(source)
-                    .and("password").exists(true).ne("").ne(null)
-                    .not().regex("^\\s*$")), 
-                StealerLog.class
-            );
-            
-            // Count strong passwords (basic pattern: at least 8 chars, has upper, lower, digit)
-            long strongPasswords = mongoTemplate.count(
-                Query.query(Criteria.where("source_db").is(source)
-                .and("password").regex("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$")),
-                StealerLog.class
-            );
-            
-            long withoutPassword = totalCount - withPassword;
-            double percentage = totalCount > 0 ? (double) withPassword / totalCount * 100 : 0.0;
-            double strongPasswordPercentage = withPassword > 0 ? (double) strongPasswords / withPassword * 100 : 0.0;
-            
-            return PasswordStats.builder()
-                .totalRecords(totalCount)
-                .withPassword(withPassword)
-                .withoutPassword(withoutPassword)
-                .strongPasswords(strongPasswords)
-                .percentage(percentage)
-                .strongPasswordPercentage(strongPasswordPercentage)
-                .build();
-                
-        } catch (Exception e) {
-            log.error("Error calculating password stats for source {}: {}", source, e.getMessage());
+    * Calculate password statistics using separate queries for better compatibility
+    */
+    private PasswordStats calculatePasswordStats(String actualFieldName, String source) {
+    try {
+    log.info("🔍 Calculating password stats for source '{}' using field '{}'", source, actualFieldName);
+    
+    // Total count
+    long totalCount = mongoTemplate.count(
+        Query.query(Criteria.where(actualFieldName).is(source)), 
+        StealerLog.class
+    );
+    
+    // Count with passwords (not null, not empty, not just whitespace)
+    long withPassword = mongoTemplate.count(
+    Query.query(Criteria.where(actualFieldName).is(source)
+        .and("password").exists(true).ne("").ne(null)
+            .not().regex("^\\s*$")), 
+        StealerLog.class
+    );
+    
+    // Count strong passwords (basic pattern: at least 8 chars, has upper, lower, digit)
+    long strongPasswords = mongoTemplate.count(
+    Query.query(Criteria.where(actualFieldName).is(source)
+            .and("password").regex("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$")), 
+        StealerLog.class
+    );
+    
+    long withoutPassword = totalCount - withPassword;
+    double percentage = totalCount > 0 ? (double) withPassword / totalCount * 100 : 0.0;
+    double strongPasswordPercentage = withPassword > 0 ? (double) strongPasswords / withPassword * 100 : 0.0;
+    
+    log.info("📋 Password stats: total={}, withPassword={}, percentage={:.1f}%", 
+    totalCount, withPassword, percentage);
+    
+    return PasswordStats.builder()
+    .totalRecords(totalCount)
+    .withPassword(withPassword)
+    .withoutPassword(withoutPassword)
+            .strongPasswords(strongPasswords)
+        .percentage(percentage)
+        .strongPasswordPercentage(strongPasswordPercentage)
+    .build();
+    
+    } catch (Exception e) {
+        log.error("Error calculating password stats for source {}: {}", source, e.getMessage());
             return PasswordStats.builder()
                 .totalRecords(0L).withPassword(0L).withoutPassword(0L)
                 .strongPasswords(0L).percentage(0.0).strongPasswordPercentage(0.0)
@@ -170,10 +175,12 @@ public class LazyMetricsService {
     /**
      * Calculate domain distribution using MongoDB aggregation with correct field name
      */
-    private Map<String, Long> calculateDomainDistribution(String source) {
+    private Map<String, Long> calculateDomainDistribution(String actualFieldName, String source) {
         try {
+            log.info("🔍 Calculating domain distribution for source '{}' using field '{}'", source, actualFieldName);
+            
             Aggregation aggregation = Aggregation.newAggregation(
-                Aggregation.match(Criteria.where("source_db").is(source) // Fixed field name
+                Aggregation.match(Criteria.where(actualFieldName).is(source) // Use correct field name
                     .and("domain").exists(true).ne("").ne(null)),
                 Aggregation.group("domain").count().as("count"),
                 Aggregation.sort(Sort.Direction.DESC, "count"),
@@ -191,6 +198,8 @@ public class LazyMetricsService {
                 }
             }
             
+            log.info("🌐 Found {} unique domains for source '{}'", distribution.size(), source);
+            
             return distribution;
             
         } catch (Exception e) {
@@ -200,17 +209,22 @@ public class LazyMetricsService {
     }
     
     /**
-     * Calculate data quality assessment using separate count queries
+     * Calculate data quality assessment for all records (not source-specific)
      */
-    private DataQualityAssessment calculateDataQuality(String source) {
+    private DataQualityAssessment calculateDataQuality() {
         try {
-            // Total records
+            log.info("🔍 Calculating overall data quality for entire collection");
+            
+            // Total records in the entire collection
             long totalRecords = mongoTemplate.count(
-                Query.query(Criteria.where("source_db").is(source)), 
+                Query.query(Criteria.where("id").exists(true)), 
                 StealerLog.class
             );
             
+            log.info("📊 Total records for quality assessment: {}", totalRecords);
+            
             if (totalRecords == 0) {
+                log.warn("⚠️ No records found for data quality assessment");
                 return DataQualityAssessment.builder()
                     .score(0.0)
                     .details("No records found")
@@ -221,36 +235,38 @@ public class LazyMetricsService {
                     .build();
             }
             
-            // Count records with each field
+            // Count records with each field across all data
             long hasLogin = mongoTemplate.count(
-                Query.query(Criteria.where("source_db").is(source)
-                    .and("login").exists(true).ne("").ne(null)), 
+                Query.query(Criteria.where("login").exists(true).ne("").ne(null)), 
                 StealerLog.class
             );
             
             long hasPassword = mongoTemplate.count(
-                Query.query(Criteria.where("source_db").is(source)
-                    .and("password").exists(true).ne("").ne(null)), 
+                Query.query(Criteria.where("password").exists(true).ne("").ne(null)), 
                 StealerLog.class
             );
             
             long hasUrl = mongoTemplate.count(
-                Query.query(Criteria.where("source_db").is(source)
-                    .and("url").exists(true).ne("").ne(null)), 
+                Query.query(Criteria.where("url").exists(true).ne("").ne(null)), 
                 StealerLog.class
             );
             
             long hasDomain = mongoTemplate.count(
-                Query.query(Criteria.where("source_db").is(source)
-                    .and("domain").exists(true).ne("").ne(null)), 
+                Query.query(Criteria.where("domain").exists(true).ne("").ne(null)), 
                 StealerLog.class
             );
+            
+            log.info("📋 Data completeness counts: login={}, password={}, url={}, domain={}", 
+                hasLogin, hasPassword, hasUrl, hasDomain);
             
             // Calculate completeness percentages
             double loginCompleteness = (double) hasLogin / totalRecords * 100;
             double passwordCompleteness = (double) hasPassword / totalRecords * 100;
             double urlCompleteness = (double) hasUrl / totalRecords * 100;
             double domainCompleteness = (double) hasDomain / totalRecords * 100;
+            
+            log.info("📊 Completeness percentages: login={:.1f}%, password={:.1f}%, url={:.1f}%, domain={:.1f}%", 
+                loginCompleteness, passwordCompleteness, urlCompleteness, domainCompleteness);
             
             // Calculate quality score (0-100) with enhanced weights
             double loginScore = loginCompleteness * 0.25; // 25% weight
@@ -259,6 +275,8 @@ public class LazyMetricsService {
             double domainScore = domainCompleteness * 0.15; // 15% weight
             
             double totalScore = loginScore + passwordScore + urlScore + domainScore;
+            
+            log.info("✅ Calculated overall data quality score: {:.1f}/100", totalScore);
             
             String details = String.format(
                 "Login: %.1f%%, Password: %.1f%%, URL: %.1f%%, Domain: %.1f%%",
@@ -275,7 +293,7 @@ public class LazyMetricsService {
                 .build();
                 
         } catch (Exception e) {
-            log.error("Error calculating data quality for source {}: {}", source, e.getMessage());
+            log.error("Error calculating overall data quality: {}", e.getMessage());
             return DataQualityAssessment.builder()
                 .score(0.0)
                 .details("Assessment failed: " + e.getMessage())
@@ -445,6 +463,51 @@ public class LazyMetricsService {
             log.error("Error getting available source values: {}", e.getMessage());
             return new ArrayList<>();
         }
+    }
+    
+    /**
+     * Get debug information about the MongoDB collection
+     */
+    public Map<String, Object> getDebugInfo() {
+        Map<String, Object> debugInfo = new HashMap<>();
+        
+        try {
+            // Total documents
+            long totalDocs = mongoTemplate.count(Query.query(Criteria.where("id").exists(true)), StealerLog.class);
+            debugInfo.put("totalDocuments", totalDocs);
+            
+            // Available source_db values
+            List<String> sourceDbValues = mongoTemplate.findDistinct("source_db", StealerLog.class, String.class);
+            debugInfo.put("sourceDbValues", sourceDbValues.subList(0, Math.min(10, sourceDbValues.size())));
+            debugInfo.put("sourceDbCount", sourceDbValues.size());
+            
+            // Available source values (fallback)
+            List<String> sourceValues = mongoTemplate.findDistinct("source", StealerLog.class, String.class);
+            debugInfo.put("sourceValues", sourceValues.subList(0, Math.min(10, sourceValues.size())));
+            debugInfo.put("sourceCount", sourceValues.size());
+            
+            // Sample document
+            List<StealerLog> sampleDocs = mongoTemplate.find(
+                Query.query(Criteria.where("id").exists(true)).limit(1), 
+                StealerLog.class
+            );
+            
+            if (!sampleDocs.isEmpty()) {
+                StealerLog sample = sampleDocs.get(0);
+                Map<String, Object> sampleData = new HashMap<>();
+                sampleData.put("id", sample.getId());
+                sampleData.put("source", sample.getSource());
+                sampleData.put("login", sample.getLogin());
+                sampleData.put("domain", sample.getDomain());
+                debugInfo.put("sampleDocument", sampleData);
+            }
+            
+        } catch (Exception e) {
+            debugInfo.put("error", e.getMessage());
+            log.error("Error getting debug info: {}", e.getMessage());
+        }
+        
+        return debugInfo;
     }
     
     private SourceDetailedMetrics createDefaultMetrics(String source) {

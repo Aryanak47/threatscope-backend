@@ -83,6 +83,7 @@ public class SearchResponse {
         private Map<String, List<String>> highlights;
         private Map<String, Object> additionalData;
         private String password;
+        private Integer dataQuality; // NEW: Data quality percentage (0-100)
 
         // NEW: Enhanced metrics
         private Long sourceRecordsAffected; // Total records in this breach
@@ -102,6 +103,7 @@ public class SearchResponse {
             
             List<String> dataTypes = calculateAvailableDataTypes(log);
             boolean verified = calculateVerificationStatus(log);
+            int dataQuality = calculateDataQuality(log);
             
             return Optional.of(SearchResult.builder()
                     .id(log.getId())
@@ -115,6 +117,7 @@ public class SearchResponse {
                     .hasPassword(log.getPassword() != null && !log.getPassword().isEmpty())
                     .severity(calculateSeverity(log.getLogin(), log.getDomain()))
                     .isVerified(verified)
+                    .dataQuality(dataQuality) // NEW: Data quality calculation
                     // Enhanced metrics from BreachMetricsService (with null safety)
                     .sourceRecordsAffected( 0L)
                     .sourceQualityScore( 0.0)
@@ -253,6 +256,40 @@ public class SearchResponse {
                 }
             }
             return false;
+        }
+        
+        /**
+         * Calculate data quality percentage based on available fields
+         * @param log The StealerLog to analyze
+         * @return Data quality percentage (0-100)
+         */
+        private static int calculateDataQuality(StealerLog log) {
+            if (log == null) return 0;
+            
+            int totalFields = 4; // login, password, domain, url
+            int filledFields = 0;
+            
+            // Check login field
+            if (log.getLogin() != null && !log.getLogin().trim().isEmpty() && !"null".equals(log.getLogin().trim())) {
+                filledFields++;
+            }
+            
+            // Check password field
+            if (log.getPassword() != null && !log.getPassword().trim().isEmpty() && !"null".equals(log.getPassword().trim())) {
+                filledFields++;
+            }
+            
+            // Check domain field
+            if (log.getDomain() != null && !log.getDomain().trim().isEmpty() && !"null".equals(log.getDomain().trim())) {
+                filledFields++;
+            }
+            
+            // Check URL field
+            if (log.getUrl() != null && !log.getUrl().trim().isEmpty() && !"null".equals(log.getUrl().trim())) {
+                filledFields++;
+            }
+            
+            return Math.round((float) filledFields / totalFields * 100);
         }
     }
     

@@ -25,9 +25,9 @@ public interface StealerLogRepository extends MongoRepository<StealerLog, String
     List<StealerLog> findByLogin(String login);
     
     // Case-insensitive search methods for fallback
-    List<StealerLog> findByLoginContainingIgnoreCase(String login);
+    List<StealerLog> findByLoginIgnoreCase(String login);
     List<StealerLog> findByDomainContainingIgnoreCase(String domain);
-    List<StealerLog> findByUrlContainingIgnoreCase(String url);
+    List<StealerLog> findByUrlIgnoreCase(String url);
     
     // Combined search for general queries
     List<StealerLog> findByLoginContainingIgnoreCaseOrUrlContainingIgnoreCase(String login, String url);

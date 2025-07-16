@@ -33,11 +33,10 @@ public class SearchFallbackService {
 
         // Basic search in MongoDB based on query type
         List<StealerLog> results = switch (request.getSearchType()) {
-            case EMAIL -> stealerLogRepository.findByLoginContainingIgnoreCase(request.getQuery());
+            case EMAIL , USERNAME -> stealerLogRepository.findByLoginIgnoreCase(request.getQuery());
             case DOMAIN -> stealerLogRepository.findByDomainContainingIgnoreCase(request.getQuery());
-            case URL -> stealerLogRepository.findByUrlContainingIgnoreCase(request.getQuery());
-            default -> stealerLogRepository.findByLoginContainingIgnoreCaseOrUrlContainingIgnoreCase(
-                    request.getQuery(), request.getQuery());
+            case URL -> stealerLogRepository.findByUrlIgnoreCase(request.getQuery());
+            default -> throw new IllegalArgumentException("Unsupported search type: " + request.getSearchType());
         };
 
         // Convert to response format, filtering out any empty Optionals
@@ -48,9 +47,9 @@ public class SearchFallbackService {
                 .collect(Collectors.toList());
 
         // Async index the results in Elasticsearch
-        if (!results.isEmpty()) {
-            indexInElasticsearchAsync(results);
-        }
+//        if (!results.isEmpty()) {
+//            indexInElasticsearchAsync(results);
+//        }
 
         return SearchResponse.builder()
                 .results(searchResults)
