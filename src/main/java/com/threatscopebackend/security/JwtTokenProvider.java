@@ -55,11 +55,15 @@ public class JwtTokenProvider {
 
     public String generateRefreshToken(Authentication authentication) {
         UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+        return generateRefreshTokenFromUserId(userPrincipal.getId());
+    }
+
+    public String generateRefreshTokenFromUserId(Long userId) {
         Instant now = Instant.now();
         Instant expiryDate = now.plus(refreshExpiration);
 
         return Jwts.builder()
-                .subject(Long.toString(userPrincipal.getId()))
+                .subject(Long.toString(userId))
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiryDate))
                 .signWith(getSigningKey())

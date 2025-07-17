@@ -47,9 +47,18 @@ public class UserPrincipal implements UserDetails {
     }
 
     public static UserPrincipal create(User user) {
-        List<GrantedAuthority> authorities = user.getRoles().stream()
-                .map(role -> new SimpleGrantedAuthority(role.getName().name()))
-                .collect(Collectors.toList());
+        List<GrantedAuthority> authorities;
+        
+        // Handle roles collection safely to avoid ConcurrentModificationException
+        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+            // Create a defensive copy to avoid concurrent modification
+            authorities = user.getRoles().stream()
+                    .map(role -> new SimpleGrantedAuthority(role.getName().name()))
+                    .collect(Collectors.toList());
+        } else {
+            // Default role if no roles are assigned
+            authorities = Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"));
+        }
 
         return new UserPrincipal(
                 user.getId(),

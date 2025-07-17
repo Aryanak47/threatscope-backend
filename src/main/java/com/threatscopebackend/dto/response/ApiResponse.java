@@ -1,4 +1,4 @@
-package com.threatscope.dto.response;
+package com.threatscopebackend.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;

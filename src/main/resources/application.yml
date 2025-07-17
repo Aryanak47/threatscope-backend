@@ -30,6 +30,13 @@ server:
   servlet:
     context-path: /api
 
+# JWT Configuration
+app:
+  jwt:
+    secret: mySecretKey123456789012345678901234567890
+    expiration: 86400000  # 24 hours in milliseconds
+    refresh-expiration: 604800000  # 7 days in milliseconds
+
 # Logging Configuration
 # API Documentation - Common settings
 springdoc:

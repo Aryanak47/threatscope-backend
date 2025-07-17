@@ -54,7 +54,7 @@ public class AuthService {
             UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
             
             // Update last login
-            User user = userRepository.findById(userPrincipal.getId())
+            User user = userRepository.findByIdWithRoles(userPrincipal.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
             user.setLastLogin(java.time.LocalDateTime.now());
             userRepository.save(user);
@@ -132,15 +132,10 @@ public class AuthService {
 //        );
         
         // Generate tokens
-        String accessToken = tokenProvider.generateTokenFromUserId(user.getId());
-        String refreshToken = tokenProvider.generateRefreshToken(
-                new UsernamePasswordAuthenticationToken(
-                        user.getEmail(),
-                        user.getPassword()
-                )
-        );
+        String accessToken = tokenProvider.generateTokenFromUserId(result.getId());
+        String refreshToken = tokenProvider.generateRefreshTokenFromUserId(result.getId());
         
-        return new AuthResponse(accessToken, refreshToken, UserPrincipal.create(user));
+        return new AuthResponse(accessToken, refreshToken, UserPrincipal.create(result));
     }
 
     @Transactional
@@ -219,17 +214,12 @@ public class AuthService {
         }
         
         Long userId = tokenProvider.getUserIdFromToken(refreshToken);
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdWithRoles(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
         
         // Generate new tokens
         String newAccessToken = tokenProvider.generateTokenFromUserId(userId);
-        String newRefreshToken = tokenProvider.generateRefreshToken(
-                new UsernamePasswordAuthenticationToken(
-                        user.getEmail(),
-                        user.getPassword()
-                )
-        );
+        String newRefreshToken = tokenProvider.generateRefreshTokenFromUserId(userId);
         
         return new AuthResponse(newAccessToken, newRefreshToken, UserPrincipal.create(user));
     }

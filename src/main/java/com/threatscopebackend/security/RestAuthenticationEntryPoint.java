@@ -1,7 +1,7 @@
 package com.threatscopebackend.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.threatscope.dto.response.ApiResponse;
+import com.threatscopebackend.dto.response.ApiResponse;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

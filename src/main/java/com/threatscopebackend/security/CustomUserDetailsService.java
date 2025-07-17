@@ -26,7 +26,7 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Override
     @Transactional
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findByEmailWithRoles(email)
                 .orElseThrow(() ->
                         new UsernameNotFoundException("User not found with email : " + email)
                 );
@@ -36,7 +36,7 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Transactional
     public UserDetails loadUserById(Long id) {
-        User user = userRepository.findById(id).orElseThrow(
+        User user = userRepository.findByIdWithRoles(id).orElseThrow(
             () -> new ResourceNotFoundException("User", "id", id)
         );
 

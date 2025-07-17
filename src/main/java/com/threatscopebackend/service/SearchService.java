@@ -217,7 +217,7 @@ public class SearchService {
         String domain = request.getQuery().toLowerCase().trim();
         int monthsBack = getMonthsBackFromFilters(request.getFilters());
         try {
-            return multiIndexSearchService.searchUrlAcrossIndices("*" + domain + "*", pageable, monthsBack);
+            return multiIndexSearchService.searchUrlAcrossIndices(  domain , pageable, monthsBack);
         } catch (Exception e) {
             log.error("Error in domain search: {}", e.getMessage(), e);
             return Page.empty();

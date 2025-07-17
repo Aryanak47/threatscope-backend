@@ -1,6 +1,6 @@
 package com.threatscopebackend.exception;
 
-import com.threatscope.dto.response.ApiResponse;
+import com.threatscopebackend.dto.response.ApiResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpHeaders;
@@ -37,21 +37,38 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             @NonNull HttpStatusCode status,
             @NonNull WebRequest request) {
         
-        Map<String, String> errors = ex.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .collect(Collectors.toMap(
-                        FieldError::getField,
-                        fieldError -> {
-                            fieldError.getDefaultMessage();
-                            return fieldError.getDefaultMessage();
-                        }
-                ));
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error -> {
+            String fieldName = error.getField();
+            String errorMessage = error.getDefaultMessage();
+            // If there are multiple errors for the same field, combine them
+            if (errors.containsKey(fieldName)) {
+                errors.put(fieldName, errors.get(fieldName) + "; " + errorMessage);
+            } else {
+                errors.put(fieldName, errorMessage);
+            }
+        });
+        
+        // Create user-friendly error messages
+        StringBuilder combinedMessage = new StringBuilder();
+        if (errors.containsKey("password")) {
+            combinedMessage.append("🔒 Password requirements: ").append(errors.get("password"));
+        }
+        if (errors.containsKey("email")) {
+            if (combinedMessage.length() > 0) combinedMessage.append(". ");
+            combinedMessage.append("📬 Email: ").append(errors.get("email"));
+        }
+        if (errors.containsKey("phoneNumber")) {
+            if (combinedMessage.length() > 0) combinedMessage.append(". ");
+            combinedMessage.append("📱 Phone: ").append(errors.get("phoneNumber"));
+        }
+        
+        String finalMessage = combinedMessage.length() > 0 ? 
+            combinedMessage.toString() : 
+            "Please check your input and try again";
         
         return ResponseEntity.badRequest()
-                .body(ApiResponse.validationError(
-                        new ArrayList<>(errors.values())
-                ));
+                .body(ApiResponse.error(finalMessage, new ArrayList<>(errors.values()), HttpStatus.BAD_REQUEST));
     }
 
 
