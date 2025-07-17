@@ -12,6 +12,7 @@ import com.threatscopebackend.service.data.IndexNameProvider;
 import com.threatscopebackend.service.search.MultiIndexSearchService;
 import com.threatscopebackend.service.search.SearchFallbackService;
 import com.threatscopebackend.service.security.RateLimitService;
+import com.threatscopebackend.service.core.UsageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
@@ -42,6 +43,7 @@ public class SearchService {
     private final SearchFallbackService searchFallbackService;
     private final ElasticsearchConfig elasticsearchConfig;
     private final IndexNameProvider indexNameProvider;
+    private final UsageService usageService;
 
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
@@ -65,23 +67,40 @@ public class SearchService {
 //        rateLimitService.checkSearchLimit(user.getId());
 
         try {
+            SearchResponse response = null;
+            
             // Step 1: First try Elasticsearch
             try {
                 Page<BreachDataIndex> esResults = performElasticsearchSearch(request);
                 
                 if (esResults != null && !esResults.isEmpty()) {
                     // If we have results from Elasticsearch, process and return them
-                    return buildSearchResponse(esResults, request, startTime);
+                    response = buildSearchResponse(esResults, request, startTime);
+                } else {
+                    log.info("No results found in Elasticsearch, falling back to MongoDB");
                 }
-                log.info("No results found in Elasticsearch, falling back to MongoDB");
             } catch (Exception e) {
                 log.warn("Elasticsearch search failed, falling back to MongoDB: {}", e.getMessage());
             }
 
-            // Step 2: Fallback to MongoDB search
-            SearchResponse mongoResponse = searchFallbackService.searchInMongoDB(request, user);
-            mongoResponse.setExecutionTimeMs(System.currentTimeMillis() - startTime);
-            return mongoResponse;
+            // Step 2: Fallback to MongoDB search if no ES results
+            if (response == null) {
+                response = searchFallbackService.searchInMongoDB(request, user);
+                response.setExecutionTimeMs(System.currentTimeMillis() - startTime);
+            }
+
+            // ✅ **CRITICAL FIX**: Record usage after successful search
+            if (response != null && !user.getId().equals("anonymous")) {
+                try {
+                    usageService.recordUsage(user, UsageService.UsageType.SEARCH);
+                    log.info("✅ Recorded search usage for user: {}", user.getId());
+                } catch (Exception e) {
+                    log.error("❌ Failed to record usage for user {}: {}", user.getId(), e.getMessage(), e);
+                    // Don't fail the search if usage recording fails
+                }
+            }
+
+            return response;
 
         } catch (Exception e) {
             log.error("Search failed for user {}: {}", user.getId(), e.getMessage(), e);

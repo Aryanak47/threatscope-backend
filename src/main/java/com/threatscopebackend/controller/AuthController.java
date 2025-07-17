@@ -1,18 +1,21 @@
 package com.threatscopebackend.controller;
 
 
-import com.threatscope.dto.request.PasswordResetRequest;
-import com.threatscope.dto.request.RegisterRequest;
-
-
-
 import com.threatscopebackend.dto.request.LoginRequest;
+import com.threatscopebackend.dto.request.PasswordResetRequest;
+import com.threatscopebackend.dto.request.RegisterRequest;
 import com.threatscopebackend.dto.response.ApiResponse;
 import com.threatscopebackend.dto.response.AuthResponse;
+import com.threatscopebackend.entity.postgresql.User;
+import com.threatscopebackend.exception.ResourceNotFoundException;
+import com.threatscopebackend.repository.postgresql.UserRepository;
+import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.core.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,9 +23,18 @@ import jakarta.servlet.http.HttpServletRequest;
 @RestController
 @RequestMapping("/v1/auth")
 @RequiredArgsConstructor
+@Slf4j
 public class AuthController {
 
     private final AuthService authService;
+    private final UserRepository userRepository;
+
+    @GetMapping("/test")
+    public ResponseEntity<ApiResponse<String>> testEndpoint() {
+        return ResponseEntity.ok(
+                ApiResponse.success("Auth controller is working!", "Test successful")
+        );
+    }
 
     @PostMapping("/login")
 
@@ -40,15 +52,36 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> registerUser(
-            @Valid @RequestBody RegisterRequest registerRequest,
+            @RequestBody RegisterRequest registerRequest,
             HttpServletRequest request) {
         
-        String ipAddress = getClientIpAddress(request);
-        AuthResponse authResponse = authService.registerUser(registerRequest, ipAddress);
-        
-        return ResponseEntity.ok(
-                ApiResponse.success("User registered successfully", authResponse)
-        );
+        try {
+            log.info("🚀 Registration attempt for email: {}", registerRequest.getEmail());
+            log.info("📄 Full request data: firstName={}, lastName={}, email={}, phoneNumber={}", 
+                    registerRequest.getFirstName(), registerRequest.getLastName(), 
+                    registerRequest.getEmail(), registerRequest.getPhoneNumber());
+            
+            String ipAddress = getClientIpAddress(request);
+            log.info("🌍 IP Address: {}", ipAddress);
+            
+            log.info("🔍 Calling authService.registerUser...");
+            AuthResponse authResponse = authService.registerUser(registerRequest, ipAddress);
+            
+            log.info("✅ Registration successful for email: {}", registerRequest.getEmail());
+            return ResponseEntity.ok(
+                    ApiResponse.success("User registered successfully", authResponse)
+            );
+        } catch (Exception e) {
+            log.error("❌ Registration failed for email: {} with error: {}", 
+                    registerRequest.getEmail(), e.getMessage(), e);
+            log.error("🔍 Exception type: {}", e.getClass().getSimpleName());
+            log.error("🔍 Exception message: '{}'", e.getMessage());
+            log.error("🔍 Exception cause: {}", e.getCause());
+            if (e.getCause() != null) {
+                log.error("🔍 Cause message: '{}'", e.getCause().getMessage());
+            }
+            throw e; // Re-throw to let global exception handler deal with it
+        }
     }
 
     @GetMapping("/verify-email")
@@ -91,6 +124,22 @@ public class AuthController {
         
         return ResponseEntity.ok(
                 ApiResponse.success("Token refreshed successfully", authResponse)
+        );
+    }
+    
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<User>> getCurrentUser(
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        
+        log.info("🔍 /auth/me endpoint called for user ID: {}", userPrincipal.getId());
+        
+        User user = userRepository.findByIdWithRoles(userPrincipal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+        
+        log.info("✅ User data retrieved for: {} ({})", user.getEmail(), user.getId());
+        
+        return ResponseEntity.ok(
+                ApiResponse.success("User retrieved successfully", user)
         );
     }
 

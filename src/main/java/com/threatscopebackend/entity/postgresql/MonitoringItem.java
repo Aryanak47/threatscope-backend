@@ -2,10 +2,9 @@ package com.threatscopebackend.entity.postgresql;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 
 import java.time.LocalDateTime;
 
@@ -13,31 +12,9 @@ import java.time.LocalDateTime;
 @Table(name = "monitoring_items")
 @Data
 @NoArgsConstructor
-@EqualsAndHashCode(exclude = {"user"})
+@AllArgsConstructor
+@Builder
 public class MonitoringItem {
-    
-    public enum Type {
-        EMAIL,
-        DOMAIN,
-        KEYWORD,
-        USERNAME,
-        PHONE_NUMBER,
-        CREDIT_CARD,
-        IP_ADDRESS
-    }
-    
-    public enum Status {
-        ACTIVE,
-        PAUSED,
-        ERROR
-    }
-    
-    public enum Severity {
-        LOW,
-        MEDIUM,
-        HIGH,
-        CRITICAL
-    }
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -48,48 +25,92 @@ public class MonitoringItem {
     private User user;
     
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Type type;
+    @Column(name = "monitor_type", nullable = false)
+    private MonitorType monitorType;
     
-    @Column(nullable = false)
-    private String value;
+    @Column(name = "target_value", nullable = false, length = 500)
+    private String targetValue;
     
-    private String displayName;
+    @Column(name = "monitor_name", length = 100)
+    private String monitorName;
+    
+    @Column(name = "description", length = 500)
     private String description;
     
     @Enumerated(EnumType.STRING)
-    private Status status = Status.ACTIVE;
+    @Column(name = "frequency", nullable = false)
+    private MonitorFrequency frequency;
     
-    @Enumerated(EnumType.STRING)
-    private Severity severity = Severity.MEDIUM;
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
     
-    private boolean isCaseSensitive = false;
-    private boolean isRegex = false;
-    private boolean isActive = true;
-    private boolean notifyOnMatch = true;
-    private boolean notifyOnNewBreach = true;
-    private boolean notifyOnChange = false;
-    private boolean notifyOnError = true;
-
+    @Column(name = "email_alerts", nullable = false)
+    private Boolean emailAlerts = true;
     
-    @Column(columnDefinition = "TEXT")
-    private String customNote;
+    @Column(name = "in_app_alerts", nullable = false)
+    private Boolean inAppAlerts = true;
     
-    @CreationTimestamp
-    @Column(updatable = false)
+    @Column(name = "last_checked")
+    private LocalDateTime lastChecked;
+    
+    @Column(name = "last_alert_sent")
+    private LocalDateTime lastAlertSent;
+    
+    @Column(name = "alert_count", nullable = false)
+    private Integer alertCount = 0;
+    
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
     
-    @UpdateTimestamp
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
     
-    private LocalDateTime lastCheckedAt;
-    private LocalDateTime lastMatchAt;
-    private int matchCount = 0;
-    private int breachCount = 0;
+    public enum MonitorType {
+        EMAIL,          // Monitor specific email addresses
+        DOMAIN,         // Monitor entire domains
+        USERNAME,       // Monitor usernames across platforms
+        KEYWORD,        // Monitor specific keywords/terms
+        IP_ADDRESS,     // Monitor IP addresses
+        PHONE,          // Monitor phone numbers
+        ORGANIZATION    // Monitor organization names
+    }
     
-    @Column(columnDefinition = "TEXT")
-    private String lastError;
+    public enum MonitorFrequency {
+        REAL_TIME,      // Check immediately when new data arrives
+        HOURLY,         // Check every hour
+        DAILY,          // Check once per day
+        WEEKLY          // Check once per week
+    }
     
-    @Column(columnDefinition = "TEXT")
-    private String metadata; // JSON string for additional data
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+    
+    // Helper methods
+    public boolean canSendAlert() {
+        if (lastAlertSent == null) return true;
+        
+        return switch (frequency) {
+            case REAL_TIME -> true; // Always allow real-time alerts
+            case HOURLY -> lastAlertSent.isBefore(LocalDateTime.now().minusHours(1));
+            case DAILY -> lastAlertSent.isBefore(LocalDateTime.now().minusDays(1));
+            case WEEKLY -> lastAlertSent.isBefore(LocalDateTime.now().minusWeeks(1));
+        };
+    }
+    
+    public void recordCheck() {
+        this.lastChecked = LocalDateTime.now();
+    }
+    
+    public void recordAlert() {
+        this.lastAlertSent = LocalDateTime.now();
+        this.alertCount++;
+    }
 }

@@ -1,24 +1,23 @@
 package com.threatscopebackend.entity.postgresql;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
-
-
-
 
 @Entity
 @Table(name = "users", uniqueConstraints = {
     @UniqueConstraint(columnNames = "email")
 })
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 public class User {
     
@@ -38,7 +37,6 @@ public class User {
     @Column(nullable = true)
     private String password;
 
-    
     @Column
     private String providerId;
 
@@ -76,7 +74,7 @@ public class User {
     private LocalDateTime lastPasswordChange;
     private LocalDateTime lastActivity;
 
-    @ManyToMany(fetch = FetchType.LAZY)
+    @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH})
     @JoinTable(name = "user_roles",
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id"))
@@ -87,7 +85,6 @@ public class User {
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<MonitoringItem> monitoringItems = new HashSet<>();
-
 
     // Helper methods
     public void addRole(Role role) {
@@ -102,5 +99,31 @@ public class User {
 
     public boolean hasRole(Role.RoleName roleName) {
         return roles.stream().anyMatch(role -> role.getName() == roleName);
+    }
+
+    // Custom equals and hashCode that exclude collections and focus on business identity
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        User user = (User) o;
+        return Objects.equals(id, user.id) && Objects.equals(email, user.email);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, email);
+    }
+
+    @Override
+    public String toString() {
+        return "User{" +
+                "id=" + id +
+                ", firstName='" + firstName + '\'' +
+                ", lastName='" + lastName + '\'' +
+                ", email='" + email + '\'' +
+                ", isActive=" + isActive +
+                ", isEmailVerified=" + isEmailVerified +
+                '}';
     }
 }

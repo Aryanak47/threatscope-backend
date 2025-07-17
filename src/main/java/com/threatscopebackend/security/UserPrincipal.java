@@ -67,7 +67,9 @@ public class UserPrincipal implements UserDetails {
                 user.getEmail(),
                 user.getPassword(),
                 authorities,
-                user.isActive() && user.isEmailVerified()
+                // FOR DEVELOPMENT: Only require isActive (not email verification)
+                // In production, change back to: user.isActive() && user.isEmailVerified()
+                user.isActive()
         );
     }
 

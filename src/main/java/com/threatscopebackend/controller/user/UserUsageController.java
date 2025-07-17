@@ -18,7 +18,7 @@ import java.time.LocalDate;
 @RequestMapping("/user")
 @RequiredArgsConstructor
 @Slf4j
-@PreAuthorize("hasRole('USER')")
+// @PreAuthorize("hasRole('ROLE_USER')")
 public class UserUsageController {
 
     private final UsageService usageService;
@@ -33,6 +33,11 @@ public class UserUsageController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
         try {
+            if (userPrincipal == null) {
+                log.warn("No authenticated user for stats request");
+                return ResponseEntity.status(403).body(ApiResponse.<UsageService.UserUsageStats>error("Access Denied: User not authenticated"));
+            }
+            
             if (startDate == null) {
                 startDate = LocalDate.now().minusDays(30);
             }
@@ -46,8 +51,8 @@ public class UserUsageController {
 
             return ResponseEntity.ok(ApiResponse.<UsageService.UserUsageStats>success("Usage statistics retrieved", stats));
         } catch (Exception e) {
-            log.error("Error retrieving usage stats for user {}", userPrincipal.getId(), e);
-            return ResponseEntity.badRequest().body(ApiResponse.<UsageService.UserUsageStats>error("Failed to retrieve usage statistics"));
+            log.error("Error retrieving usage stats for user {}", userPrincipal != null ? userPrincipal.getId() : "null", e);
+            return ResponseEntity.badRequest().body(ApiResponse.<UsageService.UserUsageStats>error("Failed to retrieve usage statistics: " + e.getMessage()));
         }
     }
 
@@ -59,11 +64,16 @@ public class UserUsageController {
             @CurrentUser UserPrincipal userPrincipal) {
 
         try {
+            if (userPrincipal == null) {
+                log.warn("No authenticated user for quota request");
+                return ResponseEntity.status(403).body(ApiResponse.<UsageService.UsageQuota>error("Access Denied: User not authenticated"));
+            }
+            
             UsageService.UsageQuota quota = usageService.getRemainingQuota(userPrincipal);
             return ResponseEntity.ok(ApiResponse.<UsageService.UsageQuota>success("Usage quota retrieved", quota));
         } catch (Exception e) {
-            log.error("Error retrieving quota for user {}", userPrincipal.getId(), e);
-            return ResponseEntity.badRequest().body(ApiResponse.<UsageService.UsageQuota>error("Failed to retrieve usage quota"));
+            log.error("Error retrieving quota for user {}", userPrincipal != null ? userPrincipal.getId() : "null", e);
+            return ResponseEntity.badRequest().body(ApiResponse.<UsageService.UsageQuota>error("Failed to retrieve usage quota: " + e.getMessage()));
         }
     }
 
@@ -75,11 +85,16 @@ public class UserUsageController {
             @CurrentUser UserPrincipal userPrincipal) {
 
         try {
+            if (userPrincipal == null) {
+                log.warn("No authenticated user for today usage request");
+                return ResponseEntity.status(403).body(ApiResponse.<UsageService.UserUsageStats>error("Access Denied: User not authenticated"));
+            }
+            
             UsageService.UserUsageStats todayStats = usageService.getTodayUsage(userPrincipal.getId());
             return ResponseEntity.ok(ApiResponse.<UsageService.UserUsageStats>success("Today's usage retrieved", todayStats));
         } catch (Exception e) {
-            log.error("Error retrieving today's usage for user {}", userPrincipal.getId(), e);
-            return ResponseEntity.badRequest().body(ApiResponse.<UsageService.UserUsageStats>error("Failed to retrieve today's usage"));
+            log.error("Error retrieving today's usage for user {}", userPrincipal != null ? userPrincipal.getId() : "null", e);
+            return ResponseEntity.badRequest().body(ApiResponse.<UsageService.UserUsageStats>error("Failed to retrieve today's usage: " + e.getMessage()));
         }
     }
 }

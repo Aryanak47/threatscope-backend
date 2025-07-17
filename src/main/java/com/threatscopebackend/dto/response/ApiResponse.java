@@ -20,7 +20,7 @@ public class ApiResponse<T> {
     private boolean success;
     private String message;
     private T data;
-    private Instant timestamp;
+    private String timestamp;
     private Integer status;
     private String error;
     private List<String> errors;
@@ -36,7 +36,7 @@ public class ApiResponse<T> {
                 .success(true)
                 .message(message)
                 .data(data)
-                .timestamp(Instant.now())
+                .timestamp(Instant.now().toString())
                 .status(HttpStatus.OK.value())
                 .build();
     }
@@ -46,7 +46,7 @@ public class ApiResponse<T> {
                 .success(true)
                 .message(message)
                 .data(data)
-                .timestamp(Instant.now())
+                .timestamp(Instant.now().toString())
                 .status(HttpStatus.CREATED.value())
                 .build();
     }
@@ -64,7 +64,7 @@ public class ApiResponse<T> {
                 .success(false)
                 .message(message)
                 .errors(errors != null ? errors : Collections.emptyList())
-                .timestamp(Instant.now())
+                .timestamp(Instant.now().toString())
                 .status(status.value())
                 .error(status.getReasonPhrase())
                 .build();

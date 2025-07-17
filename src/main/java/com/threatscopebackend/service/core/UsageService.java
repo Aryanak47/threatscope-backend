@@ -231,24 +231,40 @@ public class UsageService {
      * Get remaining quota for user today
      */
     public UsageQuota getRemainingQuota(UserPrincipal userPrincipal) {
-        User user = userService.findById(userPrincipal.getId());
-        Subscription subscription = user.getSubscription();
-        Subscription.PlanType planType = subscription != null ? subscription.getPlanType() : Subscription.PlanType.FREE;
-        
-        UserUsageStats todayUsage = getTodayUsage(user.getId());
-        
-        int searchLimit = getSearchLimitForPlan(planType);
-        int exportLimit = getExportLimitForPlan(planType);
-        int apiLimit = getApiLimitForPlan(planType);
-        
-        return new UsageQuota(
-            Math.max(0, searchLimit - todayUsage.totalSearches()),
-            Math.max(0, exportLimit - todayUsage.totalExports()),
-            Math.max(0, apiLimit - todayUsage.totalApiCalls()),
-            searchLimit,
-            exportLimit,
-            apiLimit
-        );
+        try {
+            User user = userService.findById(userPrincipal.getId());
+            log.debug("Found user: {} with email: {}", user.getId(), user.getEmail());
+            
+            Subscription subscription = user.getSubscription();
+            log.debug("User subscription: {}", subscription != null ? subscription.getPlanType() : "null");
+            
+            Subscription.PlanType planType = subscription != null ? subscription.getPlanType() : Subscription.PlanType.FREE;
+            
+            UserUsageStats todayUsage = getTodayUsage(user.getId());
+            log.debug("Today's usage: {}", todayUsage);
+            
+            int searchLimit = getSearchLimitForPlan(planType);
+            int exportLimit = getExportLimitForPlan(planType);
+            int apiLimit = getApiLimitForPlan(planType);
+            
+            log.debug("Limits for plan {}: searches={}, exports={}, api={}", 
+                    planType, searchLimit, exportLimit, apiLimit);
+            
+            UsageQuota quota = new UsageQuota(
+                Math.max(0, searchLimit - todayUsage.totalSearches()),
+                Math.max(0, exportLimit - todayUsage.totalExports()),
+                Math.max(0, apiLimit - todayUsage.totalApiCalls()),
+                searchLimit,
+                exportLimit,
+                apiLimit
+            );
+            
+            log.debug("Returning quota: {}", quota);
+            return quota;
+        } catch (Exception e) {
+            log.error("Error getting remaining quota for user {}: {}", userPrincipal.getId(), e.getMessage(), e);
+            throw e;
+        }
     }
     
     private int getSearchLimitForPlan(Subscription.PlanType planType) {
@@ -279,6 +295,16 @@ public class UsageService {
             case ENTERPRISE -> systemSettingsService.getIntegerValue("enterprise.daily_api_calls", 100000);
             case CUSTOM -> Integer.MAX_VALUE;
         };
+    }
+    
+    /**
+     * Get today's anonymous usage count for an IP address
+     */
+    public int getTodayAnonymousUsageCount(String ipAddress) {
+        LocalDate today = LocalDate.now();
+        return anonymousUsageRepository.findByIpAddressAndUsageDate(ipAddress, today)
+                .map(AnonymousUsage::getSearchesCount)
+                .orElse(0);
     }
     
     // Helper records for returning usage data
