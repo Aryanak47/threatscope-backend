@@ -75,7 +75,7 @@ public class SearchService {
                 
                 if (esResults != null && !esResults.isEmpty()) {
                     // If we have results from Elasticsearch, process and return them
-                    response = buildSearchResponse(esResults, request, startTime);
+                    response = buildSearchResponse(esResults, request, startTime, user);
                 } else {
                     log.info("No results found in Elasticsearch, falling back to MongoDB");
                 }
@@ -111,7 +111,7 @@ public class SearchService {
     /**
      * Build search response from Elasticsearch results with enhanced metrics
      */
-    private SearchResponse buildSearchResponse(Page<BreachDataIndex> esResults, SearchRequest request, long startTime) {
+    private SearchResponse buildSearchResponse(Page<BreachDataIndex> esResults, SearchRequest request, long startTime, UserPrincipal user) {
         // Extract MongoDB IDs from Elasticsearch results
         Set<String> mongoIds = esResults.getContent().stream()
                 .map(BreachDataIndex::getId)
@@ -119,9 +119,9 @@ public class SearchService {
 
         // Fetch full documents from MongoDB
         List<StealerLog> fullDocuments = stealerLogRepository.findByIdIn(mongoIds);
-        // Convert full documents to search results
+        // Convert full documents to search results with user context
         List<SearchResponse.SearchResult> results = fullDocuments.stream()
-                .map(this::convertToEnhancedSearchResult) // Pass null or appropriate metrics
+                .map(doc -> this.convertToEnhancedSearchResult(doc, user)) // Pass user context
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .collect(Collectors.toList());
@@ -444,10 +444,14 @@ public class SearchService {
     }
 
     /**
-     * Convert StealerLog to enhanced SearchResult DTO
+     * Convert StealerLog to enhanced SearchResult DTO with security
      */
-    private Optional<SearchResponse.SearchResult> convertToEnhancedSearchResult(StealerLog log) {
-        return SearchResponse.SearchResult.fromStealerLog(log);
+    private Optional<SearchResponse.SearchResult> convertToEnhancedSearchResult(StealerLog log, UserPrincipal user) {
+        // Pass user authentication info for proper password masking
+        boolean isAuthenticated = user != null && !"anonymous".equals(user.getId());
+        String userRole = isAuthenticated ? "USER" : "ANONYMOUS";
+        
+        return SearchResponse.SearchResult.fromStealerLog(log, isAuthenticated, userRole);
     }
 
     /**
