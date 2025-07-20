@@ -1,8 +1,9 @@
 package com.threatscopebackend.service.core;
 
+import com.threatscopebackend.entity.enums.CommonEnums;
 import com.threatscopebackend.entity.postgresql.*;
-import com.threatscopebackend.repository.sql.AnonymousUsageRepository;
-import com.threatscopebackend.repository.sql.UserUsageRepository;
+import com.threatscopebackend.repository.postgresql.AnonymousUsageRepository;
+import com.threatscopebackend.repository.postgresql.UserUsageRepository;
 import com.threatscopebackend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,7 +51,7 @@ public class UsageService {
         
         // Get user's subscription plan
         Subscription subscription = user.getSubscription();
-        Subscription.PlanType planType = subscription != null ? subscription.getPlanType() : Subscription.PlanType.FREE;
+        CommonEnums.PlanType planType = subscription != null ? subscription.getPlanType() : CommonEnums.PlanType.FREE;
         
         return switch (usageType) {
             case SEARCH -> canPerformSearch(usage, planType);
@@ -146,7 +147,7 @@ public class UsageService {
                 });
     }
     
-    private boolean canPerformSearch(UserUsage usage, Subscription.PlanType planType) {
+    private boolean canPerformSearch(UserUsage usage, CommonEnums.PlanType planType) {
         return switch (planType) {
             case FREE -> usage.canSearch(systemSettingsService.getFreeDailySearchLimit());
             case BASIC -> usage.canSearch(systemSettingsService.getBasicDailySearchLimit());
@@ -156,7 +157,7 @@ public class UsageService {
         };
     }
     
-    private boolean canPerformExport(UserUsage usage, Subscription.PlanType planType) {
+    private boolean canPerformExport(UserUsage usage, CommonEnums.PlanType planType) {
         int dailyLimit = switch (planType) {
             case FREE -> systemSettingsService.getIntegerValue("free.daily_exports", 3);
             case BASIC -> systemSettingsService.getIntegerValue("basic.daily_exports", 10);
@@ -167,7 +168,7 @@ public class UsageService {
         return usage.canExport(dailyLimit);
     }
     
-    private boolean canPerformApiCall(UserUsage usage, Subscription.PlanType planType) {
+    private boolean canPerformApiCall(UserUsage usage, CommonEnums.PlanType planType) {
         // API access is typically unlimited for paid plans, limited for free
         int dailyLimit = switch (planType) {
             case FREE -> 0; // No API access for free users
@@ -179,7 +180,7 @@ public class UsageService {
         return usage.canMakeApiCall(dailyLimit);
     }
     
-    private boolean canCreateMonitoringItem(UserUsage usage, Subscription.PlanType planType) {
+    private boolean canCreateMonitoringItem(UserUsage usage, CommonEnums.PlanType planType) {
         // This checks against total monitoring items, not daily creation
         // Implementation would need to check user's current monitoring item count
         return true; // Simplified for now
@@ -238,7 +239,7 @@ public class UsageService {
             Subscription subscription = user.getSubscription();
             log.debug("User subscription: {}", subscription != null ? subscription.getPlanType() : "null");
             
-            Subscription.PlanType planType = subscription != null ? subscription.getPlanType() : Subscription.PlanType.FREE;
+            CommonEnums.PlanType planType = subscription != null ? subscription.getPlanType() : CommonEnums.PlanType.FREE;
             
             UserUsageStats todayUsage = getTodayUsage(user.getId());
             log.debug("Today's usage: {}", todayUsage);
@@ -267,7 +268,7 @@ public class UsageService {
         }
     }
     
-    private int getSearchLimitForPlan(Subscription.PlanType planType) {
+    private int getSearchLimitForPlan(CommonEnums.PlanType planType) {
         return switch (planType) {
             case FREE -> systemSettingsService.getFreeDailySearchLimit();
             case BASIC -> systemSettingsService.getBasicDailySearchLimit();
@@ -277,7 +278,7 @@ public class UsageService {
         };
     }
     
-    private int getExportLimitForPlan(Subscription.PlanType planType) {
+    private int getExportLimitForPlan(CommonEnums.PlanType planType) {
         return switch (planType) {
             case FREE -> systemSettingsService.getIntegerValue("free.daily_exports", 3);
             case BASIC -> systemSettingsService.getIntegerValue("basic.daily_exports", 10);
@@ -287,7 +288,7 @@ public class UsageService {
         };
     }
     
-    private int getApiLimitForPlan(Subscription.PlanType planType) {
+    private int getApiLimitForPlan(CommonEnums.PlanType planType) {
         return switch (planType) {
             case FREE -> 0;
             case BASIC -> systemSettingsService.getIntegerValue("basic.daily_api_calls", 1000);

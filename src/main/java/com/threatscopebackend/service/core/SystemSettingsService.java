@@ -1,7 +1,7 @@
 package com.threatscopebackend.service.core;
 
 import com.threatscopebackend.entity.postgresql.SystemSettings;
-import com.threatscopebackend.repository.sql.SystemSettingsRepository;
+import com.threatscopebackend.repository.postgresql.SystemSettingsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

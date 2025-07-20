@@ -1,5 +1,6 @@
 package com.threatscopebackend.entity.postgresql;
 
+import com.threatscopebackend.entity.enums.CommonEnums;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -26,7 +27,7 @@ public class MonitoringItem {
     
     @Enumerated(EnumType.STRING)
     @Column(name = "monitor_type", nullable = false)
-    private MonitorType monitorType;
+    private CommonEnums.MonitorType monitorType;
     
     @Column(name = "target_value", nullable = false, length = 500)
     private String targetValue;
@@ -39,7 +40,7 @@ public class MonitoringItem {
     
     @Enumerated(EnumType.STRING)
     @Column(name = "frequency", nullable = false)
-    private MonitorFrequency frequency;
+    private CommonEnums.MonitorFrequency frequency;
     
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
@@ -49,6 +50,9 @@ public class MonitoringItem {
     
     @Column(name = "in_app_alerts", nullable = false)
     private Boolean inAppAlerts = true;
+    
+    @Column(name = "webhook_alerts", nullable = false)
+    private Boolean webhookAlerts = false;
     
     @Column(name = "last_checked")
     private LocalDateTime lastChecked;
@@ -64,23 +68,6 @@ public class MonitoringItem {
     
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-    
-    public enum MonitorType {
-        EMAIL,          // Monitor specific email addresses
-        DOMAIN,         // Monitor entire domains
-        USERNAME,       // Monitor usernames across platforms
-        KEYWORD,        // Monitor specific keywords/terms
-        IP_ADDRESS,     // Monitor IP addresses
-        PHONE,          // Monitor phone numbers
-        ORGANIZATION    // Monitor organization names
-    }
-    
-    public enum MonitorFrequency {
-        REAL_TIME,      // Check immediately when new data arrives
-        HOURLY,         // Check every hour
-        DAILY,          // Check once per day
-        WEEKLY          // Check once per week
-    }
     
     @PrePersist
     protected void onCreate() {
@@ -112,5 +99,70 @@ public class MonitoringItem {
     public void recordAlert() {
         this.lastAlertSent = LocalDateTime.now();
         this.alertCount++;
+    }
+    
+    // Get display name for monitor type
+    public String getMonitorTypeDisplayName() {
+        return monitorType.getDisplayName();
+    }
+    
+    // Get frequency display name
+    public String getFrequencyDisplayName() {
+        return frequency.getDisplayName();
+    }
+    
+    // Check if this monitor type requires premium features
+    public boolean requiresPremiumFrequency() {
+        return frequency.requiresPremium();
+    }
+    
+    // Get next check time based on frequency
+    public LocalDateTime getNextCheckTime() {
+        if (lastChecked == null) {
+            return LocalDateTime.now();
+        }
+        
+        return switch (frequency) {
+            case REAL_TIME -> LocalDateTime.now(); // Always check real-time
+            case HOURLY -> lastChecked.plusHours(1);
+            case DAILY -> lastChecked.plusDays(1);
+            case WEEKLY -> lastChecked.plusWeeks(1);
+        };
+    }
+    
+    // Check if monitoring item is due for a check
+    public boolean isDueForCheck() {
+        return getNextCheckTime().isBefore(LocalDateTime.now());
+    }
+    
+    // Get days since last check
+    public long getDaysSinceLastCheck() {
+        if (lastChecked == null) return 0;
+        return java.time.Duration.between(lastChecked, LocalDateTime.now()).toDays();
+    }
+    
+    // Get days since created
+    public long getDaysSinceCreated() {
+        return java.time.Duration.between(createdAt, LocalDateTime.now()).toDays();
+    }
+    
+    // Check if has recent alerts (within last 7 days)
+    public boolean hasRecentAlerts() {
+        return lastAlertSent != null && lastAlertSent.isAfter(LocalDateTime.now().minusDays(7));
+    }
+    
+    // Get status based on activity and checks
+    public MonitoringStatus getStatus() {
+        if (!isActive) return MonitoringStatus.INACTIVE;
+        if (lastChecked == null) return MonitoringStatus.PENDING;
+        if (getDaysSinceLastCheck() > 7) return MonitoringStatus.STALE;
+        return MonitoringStatus.ACTIVE;
+    }
+    
+    public enum MonitoringStatus {
+        ACTIVE,
+        INACTIVE,
+        PENDING,
+        STALE
     }
 }

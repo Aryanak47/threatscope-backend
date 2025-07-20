@@ -5,6 +5,7 @@ import com.threatscopebackend.document.StealerLog;
 import com.threatscopebackend.dto.SearchRequest;
 import com.threatscopebackend.dto.SearchResponse;
 import com.threatscopebackend.elasticsearch.BreachDataIndex;
+import com.threatscopebackend.entity.enums.CommonEnums;
 import com.threatscopebackend.repository.elasticsearch.BreachDataRepository;
 import com.threatscopebackend.repository.mongo.StealerLogRepository;
 import com.threatscopebackend.security.UserPrincipal;
@@ -598,5 +599,89 @@ public class SearchService {
             log.error("Suggestion search failed: {}", e.getMessage(), e);
             return List.of();
         }
+    }
+    
+    /**
+     * Search for monitoring purposes - returns raw data for alert processing
+     */
+    public List<Map<String, Object>> searchForMonitoring(String query, CommonEnums.MonitorType monitorType) {
+        try {
+            log.debug("Performing monitoring search for: {} (type: {})", query, monitorType);
+            
+            // Build search criteria based on monitor type
+            Criteria criteria = buildMonitoringCriteria(query, monitorType);
+            Query searchQuery = new CriteriaQuery(criteria);
+            
+            // Limit results for monitoring to avoid overload
+            Pageable pageable = PageRequest.of(0, 100);
+            searchQuery.setPageable(pageable);
+            
+            String[] indices = indexNameProvider.getAllIndicesPattern();
+            IndexCoordinates indexCoordinates = IndexCoordinates.of(indices);
+            
+            SearchHits<BreachDataIndex> searchHits = elasticsearchOperations.search(
+                    searchQuery, BreachDataIndex.class, indexCoordinates);
+            
+            // Convert to raw data format for alert processing
+            List<Map<String, Object>> results = new ArrayList<>();
+            
+            for (SearchHit<BreachDataIndex> hit : searchHits) {
+                BreachDataIndex breach = hit.getContent();
+                Map<String, Object> result = new HashMap<>();
+                
+                result.put("id", breach.getId());
+                result.put("login", breach.getLogin());
+                result.put("password", breach.getPassword());
+                result.put("url", breach.getUrl());
+                result.put("source", "Unknown"); // BreachDataIndex doesn't have source field
+                result.put("breach_date", breach.getTimestamp());
+                result.put("additional_data", buildAdditionalData(breach));
+                
+                results.add(result);
+            }
+            
+            log.debug("Found {} monitoring results for query: {}", results.size(), query);
+            return results;
+            
+        } catch (Exception e) {
+            log.error("Monitoring search failed for query '{}': {}", query, e.getMessage(), e);
+            return List.of();
+        }
+    }
+    
+    private Criteria buildMonitoringCriteria(String query, CommonEnums.MonitorType monitorType) {
+        String lowerQuery = query.toLowerCase().trim();
+        
+        return switch (monitorType) {
+            case EMAIL -> new Criteria("login.keyword").is(lowerQuery);
+            case DOMAIN -> new Criteria("login").endsWith("@" + lowerQuery);
+            case USERNAME -> new Criteria("login").is(lowerQuery);
+            case KEYWORD -> new Criteria("login").contains(lowerQuery)
+                    .or(new Criteria("url").contains(lowerQuery))
+                    .or(new Criteria("password").contains(lowerQuery));
+            case IP_ADDRESS -> new Criteria("url").contains(lowerQuery);
+            case PHONE -> new Criteria("login").contains(lowerQuery)
+                    .or(new Criteria("metadata").contains(lowerQuery)); // Use metadata instead of additional_data
+            case ORGANIZATION -> new Criteria("url").contains(lowerQuery)
+                    .or(new Criteria("metadata").contains(lowerQuery)); // Use metadata instead of source
+        };
+    }
+    
+    private Map<String, Object> buildAdditionalData(BreachDataIndex breach) {
+        Map<String, Object> additionalData = new HashMap<>();
+        
+        // BreachDataIndex doesn't have a source field, so we'll use a default
+        additionalData.put("source", "Unknown");
+        
+        if (breach.getUrl() != null) {
+            additionalData.put("domain", extractDomain(breach.getUrl()));
+        }
+        
+        // Add timestamp info
+        if (breach.getTimestamp() != null) {
+            additionalData.put("timestamp", breach.getTimestamp());
+        }
+        
+        return additionalData;
     }
 }
