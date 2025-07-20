@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/monitoring")
+@RequestMapping("/monitoring")
 @RequiredArgsConstructor
 @Tag(name = "Monitoring", description = "Monitoring items management")
 @PreAuthorize("hasRole('USER')")

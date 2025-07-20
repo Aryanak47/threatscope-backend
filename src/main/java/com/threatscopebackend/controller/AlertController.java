@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/alerts")
+@RequestMapping("/alerts")
 @RequiredArgsConstructor
 @Tag(name = "Alerts", description = "Breach alerts management")
 @PreAuthorize("hasRole('USER')")

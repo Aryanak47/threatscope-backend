@@ -132,6 +132,51 @@ public class SubscriptionService {
     }
     
     /**
+     * Get all active plans (public method for API)
+     */
+    public List<Plan> getAllActivePlans() {
+        return getAvailablePlans();
+    }
+    
+    /**
+     * Get plan by ID
+     */
+    public Plan getPlanById(Long planId) {
+        return planRepository.findById(planId)
+            .orElseThrow(() -> new ResourceNotFoundException("Plan not found with ID: " + planId));
+    }
+    
+    /**
+     * Get plans comparison data
+     */
+    public Object getPlansComparison() {
+        List<Plan> plans = getAllActivePlans();
+        
+        // Create a comparison structure
+        return plans.stream().map(plan -> {
+            return java.util.Map.of(
+                "id", plan.getId(),
+                "name", plan.getDisplayName(),
+                "planType", plan.getPlanType().name(),
+                "price", plan.getPrice(),
+                "dailySearches", plan.getDailySearches(),
+                "monthlySearches", plan.getMonthlySearches(),
+                "maxMonitoringItems", plan.getMaxMonitoringItems(),
+                "features", java.util.Map.of(
+                    "apiAccess", plan.getApiAccess(),
+                    "realTimeMonitoring", plan.getRealTimeMonitoring(),
+                    "emailAlerts", plan.getEmailAlerts(),
+                    "inAppAlerts", plan.getInAppAlerts(),
+                    "webhookAlerts", plan.getWebhookAlerts(),
+                    "prioritySupport", plan.getPrioritySupport(),
+                    "customIntegrations", plan.getCustomIntegrations(),
+                    "advancedAnalytics", plan.getAdvancedAnalytics()
+                )
+            );
+        }).toList();
+    }
+    
+    /**
      * Process expired trials
      */
     @Transactional
