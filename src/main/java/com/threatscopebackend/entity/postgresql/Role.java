@@ -1,5 +1,6 @@
 package com.threatscopebackend.entity.postgresql;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -24,6 +25,7 @@ public class Role {
     private RoleName name;
 
     @ManyToMany(mappedBy = "roles")
+    @JsonIgnore // Prevent circular reference during JSON serialization
     private Set<User> users = new HashSet<>();
 
     public Role(RoleName name) {

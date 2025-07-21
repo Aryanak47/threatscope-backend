@@ -31,9 +31,13 @@ public class UserPrincipal implements UserDetails {
     private final boolean accountNonExpired;
     private final boolean accountNonLocked;
     private final boolean credentialsNonExpired;
+    
+    // Add reference to the original User entity
+    @JsonIgnore
+    private final User user;
 
     public UserPrincipal(Long id, String name, String username, String email, String password, 
-                        Collection<? extends GrantedAuthority> authorities, boolean enabled) {
+                        Collection<? extends GrantedAuthority> authorities, boolean enabled, User user) {
         this.id = id;
         this.name = name;
         this.username = username;
@@ -44,6 +48,13 @@ public class UserPrincipal implements UserDetails {
         this.accountNonExpired = true;
         this.accountNonLocked = true;
         this.credentialsNonExpired = true;
+        this.user = user;
+    }
+    
+    // Legacy constructor for backward compatibility
+    public UserPrincipal(Long id, String name, String username, String email, String password, 
+                        Collection<? extends GrantedAuthority> authorities, boolean enabled) {
+        this(id, name, username, email, password, authorities, enabled, null);
     }
 
     public static UserPrincipal create(User user) {
@@ -69,7 +80,8 @@ public class UserPrincipal implements UserDetails {
                 authorities,
                 // FOR DEVELOPMENT: Only require isActive (not email verification)
                 // In production, change back to: user.isActive() && user.isEmailVerified()
-                user.isActive()
+                user.isActive(),
+                user // Pass the full user object
         );
     }
 
@@ -130,7 +142,8 @@ public class UserPrincipal implements UserDetails {
                 "anonymous@threatscope.com",
                 null, // no password
                 Collections.singletonList(new SimpleGrantedAuthority("ROLE_ANONYMOUS")),
-                true
+                true,
+                null // no user object
         );
     }
 }

@@ -89,6 +89,7 @@ public class MonitoringService {
             .emailAlerts(request.getEmailAlerts())
             .inAppAlerts(request.getInAppAlerts())
             .alertCount(0)
+            .breachCount(0)
             .build();
         
         MonitoringItem saved = monitoringItemRepository.save(item);

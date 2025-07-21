@@ -1,15 +1,13 @@
 package com.threatscopebackend.controller.user;
 
-//import com.threatscopebackend.dto.response.ApiResponse;
 import com.threatscopebackend.dto.response.ApiResponse;
-import com.threatscopebackend.security.CurrentUser;
 import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.core.UsageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -28,7 +26,7 @@ public class UserUsageController {
      */
     @GetMapping("/usage/stats")
     public ResponseEntity<ApiResponse<UsageService.UserUsageStats>> getUserUsageStats(
-            @CurrentUser UserPrincipal userPrincipal,
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
@@ -61,7 +59,7 @@ public class UserUsageController {
      */
     @GetMapping("/usage/quota")
     public ResponseEntity<ApiResponse<UsageService.UsageQuota>> getRemainingQuota(
-            @CurrentUser UserPrincipal userPrincipal) {
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         try {
             if (userPrincipal == null) {
@@ -82,7 +80,7 @@ public class UserUsageController {
      */
     @GetMapping("/usage/today")
     public ResponseEntity<ApiResponse<UsageService.UserUsageStats>> getTodayUsage(
-            @CurrentUser UserPrincipal userPrincipal) {
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         try {
             if (userPrincipal == null) {

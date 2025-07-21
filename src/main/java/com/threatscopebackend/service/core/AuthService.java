@@ -44,15 +44,16 @@ public class AuthService {
         try {
             log.info("🔍 LOGIN ATTEMPT: Starting authentication for email: {}", loginRequest.getEmail());
             
-            // Check if user exists first
-            User user = userRepository.findByEmail(loginRequest.getEmail())
+            // Check if user exists first (with subscription data)
+            User user = userRepository.findByEmailWithRolesAndSubscription(loginRequest.getEmail())
                     .orElseThrow(() -> {
                         log.warn("❌ User not found with email: {}", loginRequest.getEmail());
                         return new BadRequestException("Invalid email or password");
                     });
             
-            log.info("🔍 Found user: {} (ID: {}, Active: {}, EmailVerified: {})", 
-                    user.getEmail(), user.getId(), user.isActive(), user.isEmailVerified());
+            log.info("🔍 Found user: {} (ID: {}, Active: {}, EmailVerified: {}, Plan: {})", 
+                    user.getEmail(), user.getId(), user.isActive(), user.isEmailVerified(),
+                    user.getSubscription() != null ? user.getSubscription().getPlanType() : "No subscription");
             
             // Debug: Show what UserPrincipal.enabled will be
             boolean willBeEnabled = user.isActive() && user.isEmailVerified();
@@ -77,8 +78,8 @@ public class AuthService {
             SecurityContextHolder.getContext().setAuthentication(authentication);
             UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
             
-            // Update last login
-            User foundUser = userRepository.findByIdWithRoles(userPrincipal.getId())
+            // Update last login (with subscription data loaded)
+            User foundUser = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
             foundUser.setLastLogin(java.time.LocalDateTime.now());
             userRepository.save(foundUser);
@@ -103,7 +104,8 @@ public class AuthService {
 //            );
 
             log.info("✅ LOGIN SUCCESS: User {} authenticated successfully", loginRequest.getEmail());
-            return new AuthResponse(accessToken, refreshToken, userPrincipal);
+            // Use the user with subscription data for the AuthResponse
+            return new AuthResponse(accessToken, refreshToken, foundUser);
             
         } catch (BadRequestException e) {
             // Re-throw our custom exceptions
@@ -285,14 +287,14 @@ public class AuthService {
         }
         
         Long userId = tokenProvider.getUserIdFromToken(refreshToken);
-        User user = userRepository.findByIdWithRoles(userId)
+        User user = userRepository.findByIdWithRolesAndSubscription(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
         
         // Generate new tokens
         String newAccessToken = tokenProvider.generateTokenFromUserId(userId);
         String newRefreshToken = tokenProvider.generateRefreshTokenFromUserId(userId);
         
-        return new AuthResponse(newAccessToken, newRefreshToken, UserPrincipal.create(user));
+        return new AuthResponse(newAccessToken, newRefreshToken, user);
     }
 
     @Transactional

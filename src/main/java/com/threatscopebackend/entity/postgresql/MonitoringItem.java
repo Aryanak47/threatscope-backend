@@ -1,5 +1,6 @@
 package com.threatscopebackend.entity.postgresql;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.threatscopebackend.entity.enums.CommonEnums;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -23,13 +24,14 @@ public class MonitoringItem {
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonBackReference // Prevent circular reference during JSON serialization
     private User user;
     
     @Enumerated(EnumType.STRING)
     @Column(name = "monitor_type", nullable = false)
     private CommonEnums.MonitorType monitorType;
     
-    @Column(name = "target_value", nullable = false, length = 500)
+    @Column(name = "query", nullable = false, length = 500)
     private String targetValue;
     
     @Column(name = "monitor_name", length = 100)
@@ -62,6 +64,12 @@ public class MonitoringItem {
     
     @Column(name = "alert_count", nullable = false)
     private Integer alertCount = 0;
+    
+    @Column(name = "breach_count", nullable = false)
+    private Integer breachCount = 0;
+    
+//    @Column(name = "match_count", nullable = false)
+//    private Integer matchCount = 0;
     
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -99,6 +107,11 @@ public class MonitoringItem {
     public void recordAlert() {
         this.lastAlertSent = LocalDateTime.now();
         this.alertCount++;
+    }
+    
+    public void recordBreach() {
+        this.breachCount++;
+        recordAlert(); // Also record as an alert
     }
     
     // Get display name for monitor type

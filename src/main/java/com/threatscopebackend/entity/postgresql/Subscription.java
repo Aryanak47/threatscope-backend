@@ -1,5 +1,6 @@
 package com.threatscopebackend.entity.postgresql;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.threatscopebackend.entity.enums.CommonEnums;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -28,6 +29,7 @@ public class Subscription {
     
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonBackReference // Prevent circular reference during JSON serialization
     private User user;
     
     @Enumerated(EnumType.STRING)

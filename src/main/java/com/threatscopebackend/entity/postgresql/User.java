@@ -1,5 +1,7 @@
 package com.threatscopebackend.entity.postgresql;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -81,9 +83,11 @@ public class User {
     private Set<Role> roles = new HashSet<>();
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore // Prevent circular reference during JSON serialization
     private Subscription subscription;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore // Prevent circular reference during JSON serialization
     private Set<MonitoringItem> monitoringItems = new HashSet<>();
 
     // Helper methods

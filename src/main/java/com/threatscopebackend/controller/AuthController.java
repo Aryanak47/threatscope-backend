@@ -133,10 +133,12 @@ public class AuthController {
         
         log.info("🔍 /auth/me endpoint called for user ID: {}", userPrincipal.getId());
         
-        User user = userRepository.findByIdWithRoles(userPrincipal.getId())
+        User user = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
         
-        log.info("✅ User data retrieved for: {} ({})", user.getEmail(), user.getId());
+        log.info("✅ User data retrieved for: {} ({}) with plan: {}", 
+                user.getEmail(), user.getId(), 
+                user.getSubscription() != null ? user.getSubscription().getPlanType() : "No subscription");
         
         return ResponseEntity.ok(
                 ApiResponse.success("User retrieved successfully", user)

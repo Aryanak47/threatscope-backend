@@ -55,8 +55,8 @@ public class AlertService {
         
         BreachAlert saved = breachAlertRepository.save(alert);
         
-        // Update monitoring item alert count
-        monitoringItem.recordAlert();
+        // Update monitoring item breach and alert counts
+        monitoringItem.recordBreach(); // This increments both breachCount and alertCount
         monitoringItemRepository.save(monitoringItem);
         
         // Send notifications if enabled

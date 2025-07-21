@@ -3,6 +3,7 @@ package com.threatscopebackend.exception;
 import com.threatscopebackend.dto.response.ApiResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -90,21 +91,35 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
     }
 
-    @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiResponse<Map<String, String>>> handleConstraintViolationException(
-            ConstraintViolationException ex, WebRequest request) {
-        Map<String, String> errors = new HashMap<>();
-        ex.getConstraintViolations().forEach(violation -> {
-            String fieldName = violation.getPropertyPath().toString();
-            String message = violation.getMessage();
-            errors.put(fieldName, message);
-        });
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolationException(
+            DataIntegrityViolationException ex, WebRequest request) {
+        
+        String userMessage = "Unable to save data due to a validation error.";
+        String rootCause = ex.getMostSpecificCause().getMessage().toLowerCase();
+        
+        if (rootCause.contains("null value") && rootCause.contains("query")) {
+            userMessage = "Target value is required. Please enter the email, domain, or other value you want to monitor.";
+        } else if (rootCause.contains("null value") && rootCause.contains("monitor_name")) {
+            userMessage = "Monitor name is required. Please provide a name for your monitor.";
+        } else if (rootCause.contains("duplicate") || rootCause.contains("unique")) {
+            userMessage = "A monitor with this configuration already exists.";
+        } else if (rootCause.contains("foreign key")) {
+            userMessage = "Invalid reference data. Please try again.";
+        }
         
         return new ResponseEntity<>(
-                ApiResponse.error("Validation failed",
-                        new ArrayList<>(errors.values()),
-                        HttpStatus.BAD_REQUEST),
+                ApiResponse.error(userMessage, HttpStatus.BAD_REQUEST),
                 HttpStatus.BAD_REQUEST
+        );
+    }
+
+    @ExceptionHandler(SubscriptionLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSubscriptionLimitExceededException(
+            SubscriptionLimitExceededException ex, WebRequest request) {
+        return new ResponseEntity<>(
+                ApiResponse.forbidden(ex.getMessage()),
+                HttpStatus.FORBIDDEN
         );
     }
 

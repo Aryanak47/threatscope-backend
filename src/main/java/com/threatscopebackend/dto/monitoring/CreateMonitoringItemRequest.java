@@ -16,6 +16,7 @@ public class CreateMonitoringItemRequest {
     @Size(max = 500, message = "Target value must not exceed 500 characters")
     private String targetValue;
     
+    @NotBlank(message = "Monitor name is required")
     @Size(max = 100, message = "Monitor name must not exceed 100 characters")
     private String monitorName;
     

@@ -64,10 +64,26 @@ public class SecurityConfig {
                 .authenticationEntryPoint(restAuthenticationEntryPoint)
             )
             .authorizeHttpRequests(auth -> auth
-                .anyRequest().permitAll()  // Temporarily allow all requests for debugging
-            );
-            // Temporarily remove JWT filter for debugging
-            // .addFilterBefore(tokenAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                // Public endpoints
+                .requestMatchers("/v1/auth/**").permitAll()
+                .requestMatchers("/health").permitAll()
+                .requestMatchers("/plans").permitAll()
+                .requestMatchers("/plans/**").permitAll()
+                .requestMatchers("/anonymous/**").permitAll()
+                .requestMatchers("/mock-payment/test-methods").permitAll()
+                .requestMatchers("/actuator/**").permitAll()
+                
+                // Protected endpoints require authentication
+                .requestMatchers("/user/**").authenticated()
+                .requestMatchers("/mock-payment/process").authenticated()
+                .requestMatchers("/mock-payment/cancel").authenticated()
+                .requestMatchers("/monitoring/**").authenticated()
+                .requestMatchers("/alerts/**").authenticated()
+                
+                // All other requests require authentication
+                .anyRequest().authenticated()
+            )
+            .addFilterBefore(tokenAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
