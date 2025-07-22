@@ -68,8 +68,8 @@ public class MonitoringItem {
     @Column(name = "breach_count", nullable = false)
     private Integer breachCount = 0;
     
-//    @Column(name = "match_count", nullable = false)
-//    private Integer matchCount = 0;
+    @Column(name = "match_count", nullable = false)
+    private Integer matchCount = 0;
     
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -112,6 +112,10 @@ public class MonitoringItem {
     public void recordBreach() {
         this.breachCount++;
         recordAlert(); // Also record as an alert
+    }
+    
+    public void recordMatch() {
+        this.matchCount++;
     }
     
     // Get display name for monitor type

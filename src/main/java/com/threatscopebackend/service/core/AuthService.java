@@ -15,6 +15,7 @@ import com.threatscopebackend.repository.postgresql.UserRepository;
 import com.threatscopebackend.security.JwtTokenProvider;
 import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.notification.EmailService;
+import com.threatscopebackend.service.subscription.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -38,6 +39,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
     private final EmailService emailService;
+    private final SubscriptionService subscriptionService;
 
     @Transactional
     public AuthResponse authenticateUser(LoginRequest loginRequest, String ipAddress) {
@@ -81,6 +83,21 @@ public class AuthService {
             // Update last login (with subscription data loaded)
             User foundUser = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+            
+            // Ensure user has a subscription (for existing users who may not have one)
+            if (foundUser.getSubscription() == null) {
+                log.info("🔍 User {} has no subscription, creating free subscription", foundUser.getId());
+                try {
+                    subscriptionService.createFreeSubscription(foundUser);
+                    // Reload user with subscription
+                    foundUser = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
+                            .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+                    log.info("🔍 Free subscription created for existing user: {}", foundUser.getId());
+                } catch (Exception subEx) {
+                    log.warn("⚠️ Failed to create free subscription for existing user {}: {}", foundUser.getId(), subEx.getMessage());
+                }
+            }
+            
             foundUser.setLastLogin(java.time.LocalDateTime.now());
             userRepository.save(foundUser);
             
@@ -179,6 +196,16 @@ public class AuthService {
             // Save user
             User result = userRepository.save(user);
             log.info("🔍 User saved with ID: {}", result.getId());
+            
+            log.info("🔍 Step 5.5: Creating free subscription for new user");
+            // Create free subscription for new user
+            try {
+                subscriptionService.createFreeSubscription(result);
+                log.info("🔍 Free subscription created successfully for user: {}", result.getId());
+            } catch (Exception subEx) {
+                log.warn("⚠️ Failed to create free subscription for user {}: {}", result.getId(), subEx.getMessage());
+                // Don't fail registration if subscription creation fails
+            }
             
             log.info("🔍 Step 6: Sending verification email");
             // Send verification email

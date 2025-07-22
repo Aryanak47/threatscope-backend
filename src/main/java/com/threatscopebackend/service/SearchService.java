@@ -216,7 +216,7 @@ public class SearchService {
      */
     private Page<BreachDataIndex> searchByPassword(SearchRequest request, Pageable pageable) {
         String password = request.getQuery().trim();
-        String[] indices = indexNameProvider.getAllIndicesPattern();
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(12);
 
         try {
             Criteria criteria = new Criteria("password").matches(password);
@@ -267,7 +267,7 @@ public class SearchService {
      * REFACTORED: Using Criteria API with complex conditions
      */
     private Page<BreachDataIndex> performAdvancedSearch(SearchRequest request, Pageable pageable) {
-        String[] indices = indexNameProvider.getAllIndicesPattern();
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(12);
 
         // Start with main query criteria
         Criteria mainCriteria = null;
@@ -362,7 +362,7 @@ public class SearchService {
      * REFACTORED: Using Criteria API instead of NativeSearchQueryBuilder
      */
     private Page<BreachDataIndex> searchLoginWithWildcard(String pattern, Pageable pageable, int monthsBack) {
-        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(monthsBack);
 
         // Using contains for wildcard-like behavior
         Criteria criteria = new Criteria("login").matches(pattern);
@@ -377,7 +377,7 @@ public class SearchService {
      * REFACTORED: Using Criteria API for exact phrase matching
      */
     private Page<BreachDataIndex> performExactUrlSearch(String url, Pageable pageable, int monthsBack) {
-        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(monthsBack);
 
         // Using exact match for URLs
         Criteria criteria = new Criteria("url.keyword").is(url);
@@ -508,7 +508,7 @@ public class SearchService {
             }
 
             Query countQuery = new CriteriaQuery(criteria);
-            String[] indices = indexNameProvider.getAllIndicesPattern();
+            String[] indices = indexNameProvider.generateIndexNamesByMonth(12);
             IndexCoordinates indexCoordinates = IndexCoordinates.of(indices);
 
             return elasticsearchOperations.count(countQuery, BreachDataIndex.class, indexCoordinates);
@@ -575,7 +575,7 @@ public class SearchService {
             Pageable pageable = PageRequest.of(0, limit);
             suggestionQuery.setPageable(pageable);
 
-            String[] indices = indexNameProvider.getAllIndicesPattern();
+            String[] indices = indexNameProvider.generateIndexNamesByMonth(12);
             IndexCoordinates indexCoordinates = IndexCoordinates.of(indices);
 
             SearchHits<BreachDataIndex> searchHits = elasticsearchOperations.search(
@@ -606,7 +606,11 @@ public class SearchService {
      */
     public List<Map<String, Object>> searchForMonitoring(String query, CommonEnums.MonitorType monitorType) {
         try {
-            log.debug("Performing monitoring search for: {} (type: {})", query, monitorType);
+            log.info("🔍 Performing monitoring search for: {} (type: {})", query, monitorType);
+            
+            // Get indices and log them for debugging
+            String[] indices = indexNameProvider.getAllIndicesPattern();
+            log.info("📋 Monitoring search using indices: {}", String.join(", ", indices));
             
             // Build search criteria based on monitor type
             Criteria criteria = buildMonitoringCriteria(query, monitorType);
@@ -616,11 +620,13 @@ public class SearchService {
             Pageable pageable = PageRequest.of(0, 100);
             searchQuery.setPageable(pageable);
             
-            String[] indices = indexNameProvider.getAllIndicesPattern();
             IndexCoordinates indexCoordinates = IndexCoordinates.of(indices);
+            log.info("🔬 About to search in IndexCoordinates: {}", indexCoordinates.getIndexNames());
             
             SearchHits<BreachDataIndex> searchHits = elasticsearchOperations.search(
                     searchQuery, BreachDataIndex.class, indexCoordinates);
+            
+            log.info("📋 Search completed. Total hits: {}", searchHits.getTotalHits());
             
             // Convert to raw data format for alert processing
             List<Map<String, Object>> results = new ArrayList<>();

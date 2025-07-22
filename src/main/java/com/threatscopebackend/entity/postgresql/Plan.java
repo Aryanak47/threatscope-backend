@@ -1,5 +1,6 @@
 package com.threatscopebackend.entity.postgresql;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.threatscopebackend.entity.enums.CommonEnums;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -113,6 +114,7 @@ public class Plan {
     private LocalDateTime updatedAt;
     
     @OneToMany(mappedBy = "plan", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore // Prevent serialization of all subscriptions for this plan
     private List<Subscription> subscriptions;
     
     @PrePersist

@@ -5,9 +5,13 @@ import com.threatscopebackend.dto.response.ApiResponse;
 import com.threatscopebackend.entity.postgresql.User;
 import com.threatscopebackend.exception.ResourceNotFoundException;
 import com.threatscopebackend.repository.postgresql.UserRepository;
+import com.threatscopebackend.repository.postgresql.BreachAlertRepository;
 import com.threatscopebackend.security.CurrentUser;
 import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.monitoring.MonitoringService;
+import com.threatscopebackend.service.monitoring.BreachDetectionService;
+import com.threatscopebackend.entity.postgresql.BreachAlert;
+import com.threatscopebackend.entity.enums.CommonEnums;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,7 +35,9 @@ import java.util.Map;
 public class MonitoringController {
     
     private final MonitoringService monitoringService;
+    private final BreachDetectionService breachDetectionService;
     private final UserRepository userRepository;
+    private final BreachAlertRepository breachAlertRepository;
     
     @Operation(summary = "Create monitoring item")
     @PostMapping("/items")
@@ -156,5 +162,169 @@ public class MonitoringController {
         
         Map<String, Object> response = monitoringService.getMonitoringStatistics(user);
         return ResponseEntity.ok(ApiResponse.success("Statistics retrieved successfully", response));
+    }
+    
+    @Operation(summary = "Get breach alerts")
+    @GetMapping("/alerts")
+    public ResponseEntity<ApiResponse<Page<BreachAlertResponse>>> getBreachAlerts(
+            @CurrentUser UserPrincipal userPrincipal,
+            @Parameter(description = "Page number (0-based)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size,
+            @Parameter(description = "Sort field") @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Sort direction") @RequestParam(defaultValue = "desc") String sortDir,
+            @Parameter(description = "Filter by status") @RequestParam(required = false) CommonEnums.AlertStatus status,
+            @Parameter(description = "Filter by severity") @RequestParam(required = false) CommonEnums.AlertSeverity severity) {
+        
+        User user = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+        
+        org.springframework.data.domain.Sort sort = sortDir.equalsIgnoreCase("desc") ? 
+            org.springframework.data.domain.Sort.by(sortBy).descending() : 
+            org.springframework.data.domain.Sort.by(sortBy).ascending();
+        
+        org.springframework.data.domain.Pageable pageable = 
+            org.springframework.data.domain.PageRequest.of(page, size, sort);
+        
+        Page<BreachAlert> alertsPage;
+        if (status != null && severity != null) {
+            alertsPage = breachAlertRepository.findByUserAndStatusAndSeverity(user, status, severity, pageable);
+        } else if (status != null) {
+            alertsPage = breachAlertRepository.findByUserAndStatus(user, status, pageable);
+        } else if (severity != null) {
+            alertsPage = breachAlertRepository.findByUserAndSeverity(user, severity, pageable);
+        } else {
+            alertsPage = breachAlertRepository.findByUser(user, pageable);
+        }
+        
+        Page<BreachAlertResponse> responsePage = alertsPage.map(BreachAlertResponse::fromEntity);
+        return ResponseEntity.ok(ApiResponse.success("Breach alerts retrieved successfully", responsePage));
+    }
+    
+    @Operation(summary = "Get unread alerts count")
+    @GetMapping("/alerts/unread-count")
+    public ResponseEntity<ApiResponse<Long>> getUnreadAlertsCount(@CurrentUser UserPrincipal userPrincipal) {
+        User user = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+        
+        long unreadCount = breachAlertRepository.countByUserAndStatus(user, CommonEnums.AlertStatus.NEW);
+        return ResponseEntity.ok(ApiResponse.success("Unread count retrieved successfully", unreadCount));
+    }
+    
+    @Operation(summary = "Get specific breach alert")
+    @GetMapping("/alerts/{alertId}")
+    public ResponseEntity<ApiResponse<BreachAlertResponse>> getBreachAlert(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long alertId) {
+        
+        User user = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+        
+        BreachAlert alert = breachAlertRepository.findByIdAndUserId(alertId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Breach Alert", "id", alertId));
+        
+        BreachAlertResponse response = BreachAlertResponse.fromEntity(alert);
+        return ResponseEntity.ok(ApiResponse.success("Breach alert retrieved successfully", response));
+    }
+    
+    @Operation(summary = "Mark alert as viewed")
+    @PostMapping("/alerts/{alertId}/view")
+    public ResponseEntity<ApiResponse<BreachAlertResponse>> markAlertAsViewed(
+            @CurrentUser UserPrincipal userPrincipal,
+            @PathVariable Long alertId) {
+        
+        User user = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+        
+        BreachAlert alert = breachAlertRepository.findByIdAndUserId(alertId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Breach Alert", "id", alertId));
+        
+        if (alert.getStatus() == CommonEnums.AlertStatus.NEW) {
+            alert.setStatus(CommonEnums.AlertStatus.VIEWED);
+            alert.setViewedAt(java.time.LocalDateTime.now());
+            breachAlertRepository.save(alert);
+        }
+        
+        BreachAlertResponse response = BreachAlertResponse.fromEntity(alert);
+        return ResponseEntity.ok(ApiResponse.success("Alert marked as viewed", response));
+    }
+
+//    TODO:REMOVE
+    @Operation(summary = "Manually trigger monitoring check for testing")
+    @PostMapping("/trigger-check")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> triggerManualCheck(
+            @CurrentUser UserPrincipal userPrincipal) {
+        
+        log.info("🔄 Manual monitoring check triggered by user: {}", userPrincipal.getId());
+        
+        User user = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+        
+        // Get user's active monitoring items
+        var items = monitoringService.getMonitoringItems(user, 0, 100, "createdAt", "desc");
+        
+        int totalItems = items.getContent().size();
+        int checkedItems = 0;
+        int alertsGenerated = 0;
+        
+        log.info("📋 Found {} monitoring items to check", totalItems);
+        
+        // Manually trigger checks for all user's monitoring items
+        for (var itemResponse : items.getContent()) {
+            try {
+                // Get the actual monitoring item entity (itemResponse.getId() is already a Long)
+                Long itemId = itemResponse.getId();
+                
+                log.info("🔍 Checking monitoring item: {} ({})", 
+                        itemResponse.getMonitorName(), itemResponse.getTargetValue());
+                
+                // We need to get the actual MonitoringItem entity to pass to breach detection
+                // For now, let's create a simple method to get the entity
+                var actualEntity = getMonitoringItemEntity(user, itemId);
+                
+                if (actualEntity != null) {
+                    log.info("🔬 Running REAL breach detection for: {}", itemResponse.getTargetValue());
+                    
+                    // Call the actual breach detection service
+                    breachDetectionService.checkMonitoringItem(actualEntity);
+                    
+                    // Check if any alerts were generated by looking at the updated entity
+                    // (The breach detection service will create alerts if breaches are found)
+                    log.info("✅ Completed breach detection for: {}", itemResponse.getTargetValue());
+                } else {
+                    log.warn("⚠️ Could not find entity for monitoring item: {}", itemId);
+                }
+                
+                checkedItems++;
+                
+            } catch (Exception e) {
+                log.error("❌ Error checking monitoring item {}: {}", itemResponse.getId(), e.getMessage());
+            }
+        }
+        
+        Map<String, Object> result = Map.of(
+            "totalItems", totalItems,
+            "checkedItems", checkedItems,
+            "alertsGenerated", alertsGenerated,
+            "message", "Manual monitoring check completed"
+        );
+        
+        log.info("✅ Manual check completed: {} items checked, {} alerts generated", 
+                checkedItems, alertsGenerated);
+        
+        return ResponseEntity.ok(ApiResponse.success("Manual monitoring check completed", result));
+    }
+    
+    /**
+     * Helper method to get the actual MonitoringItem entity
+     * This is needed because the breach detection service requires the entity, not the DTO
+     */
+    private com.threatscopebackend.entity.postgresql.MonitoringItem getMonitoringItemEntity(User user, Long itemId) {
+        try {
+            // Use the monitoring service to find the actual entity
+            return monitoringService.getMonitoringItemEntity(user, itemId);
+        } catch (Exception e) {
+            log.error("❌ Failed to get monitoring item entity {}: {}", itemId, e.getMessage());
+            return null;
+        }
     }
 }

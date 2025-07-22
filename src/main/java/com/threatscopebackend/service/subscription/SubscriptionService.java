@@ -28,8 +28,21 @@ public class SubscriptionService {
      * Get user's current subscription or create a free one
      */
     public Subscription getUserSubscription(User user) {
+        log.debug("Getting subscription for user: {} (user.subscription = {})", 
+                 user.getId(), user.getSubscription() != null ? "exists" : "null");
+        
+        // First check if user already has subscription loaded
+        if (user.getSubscription() != null) {
+            log.debug("Found loaded subscription: {}", user.getSubscription().getPlanType());
+            return user.getSubscription();
+        }
+        
+        // Otherwise fetch from repository
         return subscriptionRepository.findByUser(user)
-            .orElseGet(() -> createFreeSubscription(user));
+            .orElseGet(() -> {
+                log.info("No subscription found for user: {}, creating free subscription", user.getId());
+                return createFreeSubscription(user);
+            });
     }
     
     /**
@@ -60,8 +73,25 @@ public class SubscriptionService {
      * Check if user can create monitoring items
      */
     public boolean canCreateMonitoringItem(User user, int currentCount) {
+        log.debug("Checking if user {} can create monitoring item (currentCount: {})", user.getId(), currentCount);
         Subscription subscription = getUserSubscription(user);
-        return subscription.canCreateMonitoringItems(currentCount);
+        
+        if (subscription == null) {
+            log.warn("No subscription found for user: {}", user.getId());
+            return false;
+        }
+        
+        if (subscription.getPlan() == null) {
+            log.warn("No plan found for user subscription: {}", user.getId());
+            return false;
+        }
+        
+        boolean canCreate = subscription.canCreateMonitoringItems(currentCount);
+        log.debug("User {} subscription check: plan={}, maxItems={}, currentCount={}, canCreate={}", 
+                 user.getId(), subscription.getPlan().getPlanType(), 
+                 subscription.getPlan().getMaxMonitoringItems(), currentCount, canCreate);
+        
+        return canCreate;
     }
     
     /**
@@ -204,5 +234,164 @@ public class SubscriptionService {
      */
     public List<Object[]> getSubscriptionStatistics() {
         return subscriptionRepository.getSubscriptionCountsByPlan();
+    }
+    
+    /**
+     * Get comprehensive subscription details including plan, limits, permissions, and usage
+     */
+    public SubscriptionDetails getSubscriptionDetails(User user, int currentMonitoringItems, int todaySearches) {
+        log.debug("Getting comprehensive subscription details for user: {}", user.getId());
+        
+        Subscription subscription = getUserSubscription(user);
+        Plan plan = subscription.getPlan();
+        
+        // Build subscription details
+        SubscriptionDetails details = new SubscriptionDetails();
+        
+        // Basic subscription info
+        SubscriptionInfo.SubscriptionInfoBuilder builder = SubscriptionInfo.builder()
+            .id(subscription.getId())
+            .planName(plan.getName())
+            .displayName(plan.getDisplayName())
+            .planType(subscription.getPlanType() != null ? subscription.getPlanType().name() : null)
+            .status(subscription.getStatus() != null ? subscription.getStatus().name() : null);
+            
+        // Set optional fields with null checks
+        if (subscription.getBillingCycle() != null) {
+            builder.billingCycle(subscription.getBillingCycle().name());
+        }
+        
+        builder.amount(subscription.getAmount())
+            .currency(subscription.getCurrency())
+            .currentPeriodStart(subscription.getCurrentPeriodStart())
+            .currentPeriodEnd(subscription.getCurrentPeriodEnd())
+            .trialEndDate(subscription.getTrialEndDate())
+            .isActive(subscription.isActive())
+            .isTrial(subscription.isTrial());
+            
+        details.setSubscription(builder.build());
+        
+        // Plan limits and features
+        details.setPlanLimits(PlanLimits.builder()
+            .dailySearches(plan.getDailySearches())
+            .monthlySearches(plan.getMonthlySearches())
+            .maxMonitoringItems(plan.getMaxMonitoringItems())
+            .maxAlertsPerDay(plan.getMaxAlertsPerDay())
+            .dailyExports(plan.getDailyExports())
+            .monthlyExports(plan.getMonthlyExports())
+            .hasApiAccess(plan.getApiAccess())
+            .hasRealTimeMonitoring(plan.getRealTimeMonitoring())
+            .hasEmailAlerts(plan.getEmailAlerts())
+            .hasInAppAlerts(plan.getInAppAlerts())
+            .hasWebhookAlerts(plan.getWebhookAlerts())
+            .hasPrioritySupport(plan.getPrioritySupport())
+            .hasCustomIntegrations(plan.getCustomIntegrations())
+            .hasAdvancedAnalytics(plan.getAdvancedAnalytics())
+            .allowedFrequencies(parseAllowedFrequencies(plan.getMonitoringFrequencies()))
+            .build());
+        
+        // Current permissions based on usage
+        details.setPermissions(UserPermissions.builder()
+            .canCreateMonitoringItem(canCreateMonitoringItem(user, currentMonitoringItems))
+            .canPerformSearch(canPerformSearch(user, todaySearches))
+            .hasApiAccess(hasFeature(user, "api_access"))
+            .hasRealTimeMonitoring(hasFeature(user, "real_time_monitoring"))
+            .hasPrioritySupport(hasFeature(user, "priority_support"))
+            .hasAdvancedAnalytics(hasFeature(user, "advanced_analytics"))
+            .build());
+        
+        // Current usage
+        details.setCurrentUsage(CurrentUsage.builder()
+            .monitoringItems(currentMonitoringItems)
+            .todaySearches(todaySearches)
+            .build());
+        
+        return details;
+    }
+    
+    private java.util.List<String> parseAllowedFrequencies(String frequenciesJson) {
+        if (frequenciesJson == null || frequenciesJson.isEmpty()) {
+            return java.util.List.of("DAILY", "WEEKLY"); // Default for free plans
+        }
+        
+        // Remove brackets and quotes, split by comma
+        String cleaned = frequenciesJson.replaceAll("[\\[\\]\"]", "");
+        return java.util.List.of(cleaned.split(","));
+    }
+    
+    // Inner classes for comprehensive response
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class SubscriptionDetails {
+        private SubscriptionInfo subscription;
+        private PlanLimits planLimits;
+        private UserPermissions permissions;
+        private CurrentUsage currentUsage;
+    }
+    
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class SubscriptionInfo {
+        private Long id;
+        private String planName;
+        private String displayName;
+        private String planType;
+        private String status;
+        private String billingCycle;
+        private java.math.BigDecimal amount;
+        private String currency;
+        private java.time.LocalDateTime currentPeriodStart;
+        private java.time.LocalDateTime currentPeriodEnd;
+        private java.time.LocalDateTime trialEndDate;
+        private Boolean isActive;
+        private Boolean isTrial;
+    }
+    
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class PlanLimits {
+        private Integer dailySearches;
+        private Integer monthlySearches;
+        private Integer maxMonitoringItems;
+        private Integer maxAlertsPerDay;
+        private Integer dailyExports;
+        private Integer monthlyExports;
+        private Boolean hasApiAccess;
+        private Boolean hasRealTimeMonitoring;
+        private Boolean hasEmailAlerts;
+        private Boolean hasInAppAlerts;
+        private Boolean hasWebhookAlerts;
+        private Boolean hasPrioritySupport;
+        private Boolean hasCustomIntegrations;
+        private Boolean hasAdvancedAnalytics;
+        private java.util.List<String> allowedFrequencies;
+    }
+    
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class UserPermissions {
+        private Boolean canCreateMonitoringItem;
+        private Boolean canPerformSearch;
+        private Boolean hasApiAccess;
+        private Boolean hasRealTimeMonitoring;
+        private Boolean hasPrioritySupport;
+        private Boolean hasAdvancedAnalytics;
+    }
+    
+    @lombok.Data
+    @lombok.Builder
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class CurrentUsage {
+        private Integer monitoringItems;
+        private Integer todaySearches;
     }
 }

@@ -52,9 +52,25 @@ public class MonitoringService {
     public MonitoringItemResponse createMonitoringItem(User user, CreateMonitoringItemRequest request) {
         log.info("Creating monitoring item for user: {} with type: {}", user.getId(), request.getMonitorType());
         
+        // Debug: Log detailed user and subscription information
+        log.info("User subscription: {}", user.getSubscription() != null ? user.getSubscription().getPlanType() : "NULL");
+        if (user.getSubscription() != null) {
+            log.info("Plan details: maxMonitoringItems={}, planType={}", 
+                    user.getSubscription().getPlan() != null ? user.getSubscription().getPlan().getMaxMonitoringItems() : "NULL PLAN",
+                    user.getSubscription().getPlanType());
+        }
+        
         // Check subscription limits
         long currentCount = monitoringItemRepository.countByUserAndIsActiveTrue(user);
-        if (!subscriptionService.canCreateMonitoringItem(user, (int) currentCount)) {
+        log.info("Current monitoring items count: {} for user: {}", currentCount, user.getId());
+        
+        boolean canCreate = subscriptionService.canCreateMonitoringItem(user, (int) currentCount);
+        log.info("Can create monitoring item: {} (currentCount: {})", canCreate, currentCount);
+        
+        if (!canCreate) {
+            log.warn("Subscription limit exceeded for user: {} (current count: {}, plan: {})", 
+                    user.getId(), currentCount, 
+                    user.getSubscription() != null ? user.getSubscription().getPlanType() : "NULL");
             throw new SubscriptionLimitExceededException(
                 "Monitoring item limit exceeded for your subscription plan. Please upgrade to create more monitoring items.");
         }
@@ -88,8 +104,10 @@ public class MonitoringService {
             .isActive(request.getIsActive())
             .emailAlerts(request.getEmailAlerts())
             .inAppAlerts(request.getInAppAlerts())
+            .webhookAlerts(false)  // Explicitly set webhook alerts
             .alertCount(0)
             .breachCount(0)
+            .matchCount(0)
             .build();
         
         MonitoringItem saved = monitoringItemRepository.save(item);
@@ -286,6 +304,15 @@ public class MonitoringService {
         stats.put("totalAlertCount", monitoringItemRepository.getTotalAlertsForUser(user));
         
         return stats;
+    }
+    
+    /**
+     * Get the actual MonitoringItem entity (for internal use)
+     */
+    public MonitoringItem getMonitoringItemEntity(User user, Long itemId) {
+        return monitoringItemRepository.findById(itemId)
+            .filter(item -> item.getUser().getId().equals(user.getId()))
+            .orElseThrow(() -> new ResourceNotFoundException("Monitoring item not found"));
     }
     
     // Helper methods

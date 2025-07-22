@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface BreachAlertRepository extends JpaRepository<BreachAlert, Long> {
@@ -28,6 +29,9 @@ public interface BreachAlertRepository extends JpaRepository<BreachAlert, Long> 
     
     Page<BreachAlert> findByUserAndStatusAndSeverity(User user, CommonEnums.AlertStatus status, 
                                                       CommonEnums.AlertSeverity severity, Pageable pageable);
+    
+    // Find specific alert by ID and user (for security)
+    Optional<BreachAlert> findByIdAndUserId(Long id, Long userId);
     
     // Find alerts by monitoring item
     List<BreachAlert> findByMonitoringItemOrderByCreatedAtDesc(MonitoringItem monitoringItem);

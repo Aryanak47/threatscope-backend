@@ -5,12 +5,15 @@ import com.threatscopebackend.entity.postgresql.Plan;
 import com.threatscopebackend.entity.postgresql.Subscription;
 import com.threatscopebackend.entity.postgresql.User;
 import com.threatscopebackend.security.CurrentUser;
+import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.subscription.SubscriptionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -19,20 +22,56 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/subscription")
+@RequestMapping("/subscription")
 @RequiredArgsConstructor
 @Tag(name = "Subscription", description = "User subscription management")
 @PreAuthorize("hasRole('USER')")
+@Slf4j
 public class SubscriptionController {
     
     private final SubscriptionService subscriptionService;
     
-    @Operation(summary = "Get current user subscription")
-    @GetMapping("/current")
-    public ResponseEntity<ApiResponse<SubscriptionResponse>> getCurrentSubscription(@CurrentUser User user) {
-        Subscription subscription = subscriptionService.getUserSubscription(user);
-        SubscriptionResponse response = SubscriptionResponse.fromEntity(subscription);
-        return ResponseEntity.ok(ApiResponse.success("Subscription retrieved successfully", response));
+    @PostConstruct
+    public void init() {
+        log.info("🚀 SubscriptionController initialized successfully!");
+    }
+    
+    @Operation(summary = "Get comprehensive subscription details including plan, limits, permissions, and usage")
+    @GetMapping("/details")
+    public ResponseEntity<ApiResponse<SubscriptionService.SubscriptionDetails>> getSubscriptionDetails(
+            @CurrentUser UserPrincipal userPrincipal,
+            @RequestParam(required = false, defaultValue = "0") int currentMonitoringItems,
+            @RequestParam(required = false, defaultValue = "0") int todaySearches) {
+        
+        log.info("📊 Getting subscription details - userPrincipal: {}, items: {}, searches: {}", 
+                userPrincipal != null ? userPrincipal.getId() : "NULL", currentMonitoringItems, todaySearches);
+        
+        if (userPrincipal == null) {
+            log.error("❌ @CurrentUser resolved to null - authentication issue!");
+            return ResponseEntity.status(401)
+                .body(ApiResponse.unauthorized("User not authenticated"));
+        }
+        
+        // Get the User entity from UserPrincipal
+        User user = userPrincipal.getUser();
+        if (user == null) {
+            log.error("❌ UserPrincipal.getUser() returned null for user ID: {}", userPrincipal.getId());
+            return ResponseEntity.status(401)
+                .body(ApiResponse.unauthorized("User details not available"));
+        }
+        
+        try {
+            SubscriptionService.SubscriptionDetails details = subscriptionService.getSubscriptionDetails(
+                user, currentMonitoringItems, todaySearches);
+            
+            log.info("✅ Subscription details retrieved successfully for user: {}", user.getId());
+            
+            return ResponseEntity.ok(ApiResponse.success("Subscription details retrieved successfully", details));
+        } catch (Exception e) {
+            log.error("❌ Failed to get subscription details for user: {}", user.getId(), e);
+            return ResponseEntity.status(500)
+                .body(ApiResponse.serverError("Failed to retrieve subscription details: " + e.getMessage()));
+        }
     }
     
     @Operation(summary = "Get available subscription plans")
@@ -45,75 +84,22 @@ public class SubscriptionController {
         return ResponseEntity.ok(ApiResponse.success("Plans retrieved successfully", responses));
     }
     
-    @Operation(summary = "Get user's plan limits and usage")
-    @GetMapping("/limits")
-    public ResponseEntity<ApiResponse<PlanLimitsResponse>> getPlanLimits(@CurrentUser User user) {
-        Plan plan = subscriptionService.getUserPlan(user);
-        Subscription subscription = subscriptionService.getUserSubscription(user);
-        
-        PlanLimitsResponse response = PlanLimitsResponse.builder()
-            .planName(plan.getName())
-            .displayName(plan.getDisplayName())
-            .dailySearches(plan.getDailySearches())
-            .monthlySearches(plan.getMonthlySearches())
-            .maxMonitoringItems(plan.getMaxMonitoringItems())
-            .maxAlertsPerDay(plan.getMaxAlertsPerDay())
-            .dailyExports(plan.getDailyExports())
-            .monthlyExports(plan.getMonthlyExports())
-            .hasApiAccess(plan.getApiAccess())
-            .hasRealTimeMonitoring(plan.getRealTimeMonitoring())
-            .hasEmailAlerts(plan.getEmailAlerts())
-            .hasInAppAlerts(plan.getInAppAlerts())
-            .hasPrioritySupport(plan.getPrioritySupport())
-            .hasCustomIntegrations(plan.getCustomIntegrations())
-            .hasAdvancedAnalytics(plan.getAdvancedAnalytics())
-            .allowedFrequencies(parseAllowedFrequencies(plan.getMonitoringFrequencies()))
-            .build();
-        
-        return ResponseEntity.ok(ApiResponse.success("Plan limits retrieved successfully", response));
-    }
-    
-    @Operation(summary = "Check if user can perform specific action")
-    @GetMapping("/can-perform")
-    public ResponseEntity<ApiResponse<Map<String, Boolean>>> canPerformActions(
-            @CurrentUser User user,
-            @RequestParam(required = false, defaultValue = "0") int currentMonitoringItems,
-            @RequestParam(required = false, defaultValue = "0") int todaySearches) {
-        
-        Map<String, Boolean> permissions = Map.of(
-            "canCreateMonitoringItem", subscriptionService.canCreateMonitoringItem(user, currentMonitoringItems),
-            "canPerformSearch", subscriptionService.canPerformSearch(user, todaySearches),
-            "hasApiAccess", subscriptionService.hasFeature(user, "api_access"),
-            "hasRealTimeMonitoring", subscriptionService.hasFeature(user, "real_time_monitoring"),
-            "hasPrioritySupport", subscriptionService.hasFeature(user, "priority_support"),
-            "hasAdvancedAnalytics", subscriptionService.hasFeature(user, "advanced_analytics")
-        );
-        
-        return ResponseEntity.ok(ApiResponse.success("Permissions retrieved successfully", permissions));
-    }
-    
     @Operation(summary = "Upgrade subscription")
     @PostMapping("/upgrade")
     public ResponseEntity<ApiResponse<SubscriptionResponse>> upgradeSubscription(
-            @CurrentUser User user,
+            @CurrentUser UserPrincipal userPrincipal,
             @RequestParam String planName) {
+        
+        User user = userPrincipal.getUser();
+        if (user == null) {
+            return ResponseEntity.status(401)
+                .body(ApiResponse.unauthorized("User details not available"));
+        }
         
         Subscription upgraded = subscriptionService.upgradeSubscription(user, planName);
         SubscriptionResponse response = SubscriptionResponse.fromEntity(upgraded);
         
         return ResponseEntity.ok(ApiResponse.success("Subscription upgraded successfully", response));
-    }
-    
-    private List<String> parseAllowedFrequencies(String frequenciesJson) {
-        // Parse the JSON string to extract allowed frequencies
-        // This is a simple implementation - you might want to use Jackson for proper JSON parsing
-        if (frequenciesJson == null || frequenciesJson.isEmpty()) {
-            return List.of("DAILY", "WEEKLY"); // Default for free plans
-        }
-        
-        // Remove brackets and split by comma
-        String cleaned = frequenciesJson.replaceAll("[\\[\\]\"]", "");
-        return List.of(cleaned.split(","));
     }
     
     // DTOs for responses
@@ -152,7 +138,13 @@ public class SubscriptionController {
     }
     
     @Data
-    public static class PlanResponse {
+    public static class
+
+
+
+
+
+    PlanResponse {
         private Long id;
         private String name;
         private String displayName;
@@ -208,26 +200,5 @@ public class SubscriptionController {
             
             return response;
         }
-    }
-    
-    @Data
-    @Builder
-    public static class PlanLimitsResponse {
-        private String planName;
-        private String displayName;
-        private Integer dailySearches;
-        private Integer monthlySearches;
-        private Integer maxMonitoringItems;
-        private Integer maxAlertsPerDay;
-        private Integer dailyExports;
-        private Integer monthlyExports;
-        private Boolean hasApiAccess;
-        private Boolean hasRealTimeMonitoring;
-        private Boolean hasEmailAlerts;
-        private Boolean hasInAppAlerts;
-        private Boolean hasPrioritySupport;
-        private Boolean hasCustomIntegrations;
-        private Boolean hasAdvancedAnalytics;
-        private List<String> allowedFrequencies;
     }
 }
