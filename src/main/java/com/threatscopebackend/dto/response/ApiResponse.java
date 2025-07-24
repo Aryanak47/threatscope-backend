@@ -70,6 +70,17 @@ public class ApiResponse<T> {
                 .build();
     }
 
+    public static <T> ApiResponse<T> error(String message, T data, HttpStatus status) {
+        return ApiResponse.<T>builder()
+                .success(false)
+                .message(message)
+                .data(data)
+                .timestamp(Instant.now().toString())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .build();
+    }
+
     public static <T> ApiResponse<T> notFound(String message) {
         return error(message, HttpStatus.NOT_FOUND);
     }

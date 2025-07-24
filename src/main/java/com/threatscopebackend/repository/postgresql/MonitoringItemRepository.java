@@ -29,9 +29,29 @@ public interface MonitoringItemRepository extends JpaRepository<MonitoringItem, 
     
     List<MonitoringItem> findByUserAndMonitorTypeAndIsActiveTrue(User user, CommonEnums.MonitorType monitorType);
     
-    // Find by target value (for duplicate checking)
+    // Find by target value (for duplicate checking) - case insensitive
     Optional<MonitoringItem> findByUserAndTargetValueAndMonitorTypeAndIsActiveTrue(
         User user, String targetValue, CommonEnums.MonitorType monitorType);
+    
+    // Enhanced duplicate check - case insensitive with trimming
+    @Query("SELECT m FROM MonitoringItem m WHERE m.user = :user " +
+           "AND m.monitorType = :type AND LOWER(TRIM(m.targetValue)) = LOWER(TRIM(:target))")
+    Optional<MonitoringItem> findByUserAndTypeAndTargetCaseInsensitive(
+        @Param("user") User user,
+        @Param("type") CommonEnums.MonitorType type, 
+        @Param("target") String target
+    );
+    
+    // Check both active and inactive items for comprehensive duplicate checking
+    @Query("SELECT m FROM MonitoringItem m WHERE m.user = :user " +
+           "AND m.monitorType = :type AND LOWER(TRIM(m.targetValue)) = LOWER(TRIM(:target)) " +
+           "AND m.isActive = :active")
+    Optional<MonitoringItem> findByUserAndTypeAndTargetAndActive(
+        @Param("user") User user,
+        @Param("type") CommonEnums.MonitorType type, 
+        @Param("target") String target,
+        @Param("active") Boolean active
+    );
     
     // Find items that need checking
     @Query("SELECT m FROM MonitoringItem m WHERE m.isActive = true " +

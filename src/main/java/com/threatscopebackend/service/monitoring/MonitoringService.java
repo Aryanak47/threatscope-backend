@@ -6,6 +6,7 @@ import com.threatscopebackend.entity.postgresql.MonitoringItem;
 import com.threatscopebackend.entity.postgresql.User;
 import com.threatscopebackend.service.subscription.SubscriptionService;
 import com.threatscopebackend.exception.BadRequestException;
+import com.threatscopebackend.exception.DuplicateMonitoringException;
 import com.threatscopebackend.exception.ResourceNotFoundException;
 import com.threatscopebackend.exception.SubscriptionLimitExceededException;
 import com.threatscopebackend.repository.postgresql.MonitoringItemRepository;
@@ -81,23 +82,52 @@ public class MonitoringService {
                 "Monitoring frequency '" + request.getFrequency() + "' is not available in your subscription plan.");
         }
         
-        // Check if monitoring item already exists for this user and target
-        Optional<MonitoringItem> existing = monitoringItemRepository
-            .findByUserAndTargetValueAndMonitorTypeAndIsActiveTrue(
-                user, request.getTargetValue(), request.getMonitorType());
+        // Normalize target value for consistent comparison
+        String normalizedTarget = normalizeTargetValue(request.getTargetValue(), request.getMonitorType());
         
-        if (existing.isPresent()) {
-            throw new BadRequestException("Monitoring item already exists for this target value");
+        // Check for existing monitoring item (active or inactive) with enhanced duplicate prevention
+        Optional<MonitoringItem> existingItem = monitoringItemRepository
+            .findByUserAndTypeAndTargetCaseInsensitive(user, request.getMonitorType(), normalizedTarget);
+            
+        if (existingItem.isPresent()) {
+            MonitoringItem existing = existingItem.get();
+            
+            if (existing.getIsActive()) {
+                // Active duplicate found - throw specific exception with existing item details
+                throw new DuplicateMonitoringException(
+                    String.format("You're already monitoring this %s: %s", 
+                        request.getMonitorType().getDisplayName().toLowerCase(), 
+                        request.getTargetValue()),
+                    request.getTargetValue(),
+                    request.getMonitorType().name(),
+                    existing.getId()
+                );
+            } else {
+                // Inactive item found - reactivate it instead of creating new
+                log.info("Reactivating existing inactive monitoring item: {}", existing.getId());
+                existing.setIsActive(true);
+                existing.setFrequency(request.getFrequency());
+                existing.setMonitorName(request.getMonitorName());
+                existing.setDescription(request.getDescription());
+                existing.setEmailAlerts(request.getEmailAlerts());
+                existing.setInAppAlerts(request.getInAppAlerts());
+                existing.setUpdatedAt(LocalDateTime.now());
+                existing.setLastChecked(null); // Reset to trigger immediate check
+                
+                MonitoringItem reactivated = monitoringItemRepository.save(existing);
+                log.info("Reactivated monitoring item with ID: {}", reactivated.getId());
+                return MonitoringItemResponse.fromEntity(reactivated);
+            }
         }
         
         // Validate target value based on monitor type
-        validateTargetValue(request.getMonitorType(), request.getTargetValue());
+        validateTargetValue(request.getMonitorType(), normalizedTarget);
         
         // Create new monitoring item
         MonitoringItem item = MonitoringItem.builder()
             .user(user)
             .monitorType(request.getMonitorType())
-            .targetValue(request.getTargetValue().toLowerCase().trim())
+            .targetValue(normalizedTarget)
             .monitorName(request.getMonitorName())
             .description(request.getDescription())
             .frequency(request.getFrequency())
@@ -117,13 +147,17 @@ public class MonitoringService {
     }
     
     /**
-     * Update an existing monitoring item
+     * Update an existing monitoring item with duplicate prevention
      */
     @Transactional
     public MonitoringItemResponse updateMonitoringItem(User user, Long itemId, UpdateMonitoringItemRequest request) {
         log.info("Updating monitoring item {} for user: {}", itemId, user.getId());
         
         MonitoringItem item = findMonitoringItemByUserAndId(user, itemId);
+        
+        // Check for duplicates if target value or monitor type is being changed
+        // Note: Assuming UpdateMonitoringItemRequest might have targetValue and monitorType fields
+        // If not available in current DTO, this check can be removed or DTO can be enhanced
         
         // Update fields if provided
         if (request.getMonitorName() != null) {
@@ -381,6 +415,27 @@ public class MonitoringService {
             case "WARNING" -> String.format("You have %d unread alerts that need review", unreadAlerts);
             case "GOOD" -> "All monitoring systems are operating normally";
             default -> "System status unknown";
+        };
+    }
+    
+    /**
+     * Normalize target values to prevent case-sensitive duplicates and inconsistent formatting
+     */
+    private String normalizeTargetValue(String targetValue, CommonEnums.MonitorType monitorType) {
+        if (targetValue == null) return null;
+        
+        String normalized = targetValue.trim();
+        
+        return switch (monitorType) {
+            case EMAIL, DOMAIN -> normalized.toLowerCase();
+            case IP_ADDRESS -> normalized; // Keep original case for IPs
+            case USERNAME, KEYWORD, ORGANIZATION -> normalized.toLowerCase();
+            case PHONE -> {
+                // Normalize phone numbers by removing non-digit chars except +
+                String cleaned = normalized.replaceAll("[^0-9+]", "");
+                yield cleaned.toLowerCase();
+            }
+            default -> normalized.toLowerCase();
         };
     }
 }

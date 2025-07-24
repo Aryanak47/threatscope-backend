@@ -205,6 +205,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
     }
 
+    @ExceptionHandler(DuplicateMonitoringException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleDuplicateMonitoringException(
+            DuplicateMonitoringException ex, WebRequest request) {
+        
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("message", ex.getMessage());
+        errorDetails.put("targetValue", ex.getTargetValue());
+        errorDetails.put("monitorType", ex.getMonitorType());
+        errorDetails.put("existingItemId", ex.getExistingItemId());
+        errorDetails.put("suggestion", "You can edit the existing monitoring item or remove it to create a new one.");
+        
+        return new ResponseEntity<>(
+                ApiResponse.error(ex.getMessage(), errorDetails, HttpStatus.CONFLICT),
+                HttpStatus.CONFLICT
+        );
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleAllExceptions(
             Exception ex, WebRequest request) {
