@@ -290,7 +290,94 @@ public class AlertService {
     }
     
     /**
-     * Clean up old archived alerts
+     * Process pending notifications in batches with admin-configurable limits
+     * OPTIMIZED for better performance
+     */
+    @Transactional
+    public void processPendingNotificationsBatched(Integer maxAlertsPerDay, Integer batchSize) {
+        LocalDateTime cutoffTime = LocalDateTime.now().minusHours(24);
+        
+        int totalProcessed = 0;
+        int currentBatch = 0;
+        int effectiveBatchSize = batchSize != null ? batchSize : 100;
+        int maxAlerts = maxAlertsPerDay != null ? maxAlertsPerDay : 1000;
+        
+        log.info("Starting batched notification processing - batch size: {}, max alerts: {}", effectiveBatchSize, maxAlerts);
+        
+        while (totalProcessed < maxAlerts) {
+            // Get next batch of alerts needing notification
+            int offset = currentBatch * effectiveBatchSize;
+            List<BreachAlert> alertBatch = breachAlertRepository.findAlertsNeedingNotificationPaginated(
+                cutoffTime, offset, effectiveBatchSize);
+            
+            if (alertBatch.isEmpty()) {
+                break;
+            }
+            
+            log.debug("Processing notification batch {} with {} alerts", currentBatch + 1, alertBatch.size());
+            
+            for (BreachAlert alert : alertBatch) {
+                if (totalProcessed >= maxAlerts) {
+                    break;
+                }
+                
+                try {
+                    sendAlertNotification(alert, alert.getMonitoringItem());
+                    
+                    alert.setNotificationSent(true);
+                    alert.setNotificationSentAt(LocalDateTime.now());
+                    breachAlertRepository.save(alert);
+                    
+                    totalProcessed++;
+                    
+                } catch (Exception e) {
+                    log.error("Failed to send notification for alert {}: {}", alert.getId(), e.getMessage());
+                }
+            }
+            
+            currentBatch++;
+        }
+        
+        log.info("Completed batched notification processing: {} alerts processed", totalProcessed);
+    }
+    
+    /**
+     * Clean up old archived alerts in batches
+     * OPTIMIZED for better performance and to avoid database locks
+     */
+    @Transactional
+    public int cleanupOldArchivedAlertsBatched(int daysToKeep, Integer batchSize) {
+        LocalDateTime cutoffDate = LocalDateTime.now().minusDays(daysToKeep);
+        int effectiveBatchSize = batchSize != null ? batchSize : 1000;
+        int totalDeleted = 0;
+        
+        log.info("Starting batched cleanup of alerts older than {} days with batch size {}", daysToKeep, effectiveBatchSize);
+        
+        while (true) {
+            int deletedInBatch = breachAlertRepository.deleteOldArchivedAlertsBatch(cutoffDate, effectiveBatchSize);
+            
+            if (deletedInBatch == 0) {
+                break;
+            }
+            
+            totalDeleted += deletedInBatch;
+            log.debug("Deleted {} alerts in this batch, total: {}", deletedInBatch, totalDeleted);
+            
+            // Small delay to prevent database overload
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        
+        log.info("Completed batched cleanup: {} old archived alerts cleaned up", totalDeleted);
+        return totalDeleted;
+    }
+    
+    /**
+     * Clean up old archived alerts (original method for backward compatibility)
      */
     @Transactional
     public int cleanupOldArchivedAlerts(int daysToKeep) {

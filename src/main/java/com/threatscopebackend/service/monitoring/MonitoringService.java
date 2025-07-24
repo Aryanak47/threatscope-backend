@@ -341,6 +341,21 @@ public class MonitoringService {
     }
     
     /**
+     * Get monitoring items by frequency (paginated) - for optimized scheduler
+     */
+    public List<MonitoringItem> getItemsByFrequency(CommonEnums.MonitorFrequency frequency, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return monitoringItemRepository.findByFrequencyAndIsActiveTruePaginated(frequency, pageable);
+    }
+    
+    /**
+     * Get user's monitoring items by frequency - for optimized scheduler
+     */
+    public List<MonitoringItem> getUserMonitoringItemsByFrequency(User user, CommonEnums.MonitorFrequency frequency) {
+        return monitoringItemRepository.findByUserAndFrequencyAndIsActiveTrue(user, frequency);
+    }
+    
+    /**
      * Get the actual MonitoringItem entity (for internal use)
      */
     public MonitoringItem getMonitoringItemEntity(User user, Long itemId) {

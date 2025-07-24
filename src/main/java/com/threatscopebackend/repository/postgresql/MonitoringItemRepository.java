@@ -90,4 +90,11 @@ public interface MonitoringItemRepository extends JpaRepository<MonitoringItem, 
            "OR LOWER(m.targetValue) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
            "OR LOWER(m.description) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
     Page<MonitoringItem> searchByUser(@Param("user") User user, @Param("searchTerm") String searchTerm, Pageable pageable);
+    
+    // OPTIMIZATION: Paginated frequency queries for optimized scheduler
+    @Query("SELECT m FROM MonitoringItem m WHERE m.frequency = :frequency AND m.isActive = true")
+    List<MonitoringItem> findByFrequencyAndIsActiveTruePaginated(@Param("frequency") CommonEnums.MonitorFrequency frequency, Pageable pageable);
+    
+    // User-specific frequency queries for optimized scheduler
+    List<MonitoringItem> findByUserAndFrequencyAndIsActiveTrue(User user, CommonEnums.MonitorFrequency frequency);
 }

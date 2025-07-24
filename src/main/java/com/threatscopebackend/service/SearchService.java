@@ -690,4 +690,154 @@ public class SearchService {
         
         return additionalData;
     }
+    
+    /**
+     * BULK SEARCH for monitoring optimization - processes multiple queries at once
+     */
+    public Map<String, List<Map<String, Object>>> bulkSearchForMonitoring(List<String> queries, CommonEnums.MonitorType monitorType) {
+        log.info("🔍 Performing BULK monitoring search for {} queries of type: {}", queries.size(), monitorType);
+        
+        Map<String, List<Map<String, Object>>> results = new HashMap<>();
+        
+        try {
+            // Get indices for search
+            String[] indices = indexNameProvider.getAllIndicesPattern();
+            IndexCoordinates indexCoordinates = IndexCoordinates.of(indices);
+            
+            // Build bulk search criteria combining all queries
+            Criteria bulkCriteria = buildBulkMonitoringCriteria(queries, monitorType);
+            
+            if (bulkCriteria == null) {
+                log.warn("No valid criteria built for bulk search");
+                // Return empty results for all queries
+                for (String query : queries) {
+                    results.put(query, List.of());
+                }
+                return results;
+            }
+            
+            Query searchQuery = new CriteriaQuery(bulkCriteria);
+            
+            // Use larger page size for bulk operations
+            int bulkPageSize = Math.min(500, queries.size() * 50);
+            Pageable pageable = PageRequest.of(0, bulkPageSize);
+            searchQuery.setPageable(pageable);
+            
+            log.info("🔬 Executing bulk search across {} indices with {} page size", indices.length, bulkPageSize);
+            
+            SearchHits<BreachDataIndex> searchHits = elasticsearchOperations.search(
+                    searchQuery, BreachDataIndex.class, indexCoordinates);
+            
+            log.info("📊 Bulk search completed. Total hits: {}", searchHits.getTotalHits());
+            
+            // Process results and group by original query
+            Map<String, List<Map<String, Object>>> groupedResults = new HashMap<>();
+            
+            for (SearchHit<BreachDataIndex> hit : searchHits) {
+                BreachDataIndex breach = hit.getContent();
+                Map<String, Object> result = buildSearchResultMap(breach);
+                
+                // Determine which query(ies) this result matches
+                for (String query : queries) {
+                    if (resultMatchesQuery(breach, query, monitorType)) {
+                        groupedResults.computeIfAbsent(query, k -> new ArrayList<>()).add(result);
+                    }
+                }
+            }
+            
+            // Ensure all queries have a result entry (even if empty)
+            for (String query : queries) {
+                results.put(query, groupedResults.getOrDefault(query, List.of()));
+            }
+            
+            log.info("✅ Bulk search processed {} queries, found results for {} queries", 
+                    queries.size(), groupedResults.size());
+            
+            return results;
+            
+        } catch (Exception e) {
+            log.error("❌ Bulk monitoring search failed: {}", e.getMessage(), e);
+            
+            // Fallback: return empty results for all queries
+            for (String query : queries) {
+                results.put(query, List.of());
+            }
+            return results;
+        }
+    }
+    
+    /**
+     * Build bulk search criteria that combines multiple queries with OR logic
+     */
+    private Criteria buildBulkMonitoringCriteria(List<String> queries, CommonEnums.MonitorType monitorType) {
+        if (queries == null || queries.isEmpty()) {
+            return null;
+        }
+        
+        Criteria combinedCriteria = null;
+        
+        for (String query : queries) {
+            if (query == null || query.trim().isEmpty()) {
+                continue;
+            }
+            
+            Criteria queryCriteria = buildMonitoringCriteria(query, monitorType);
+            
+            if (queryCriteria != null) {
+                if (combinedCriteria == null) {
+                    combinedCriteria = queryCriteria;
+                } else {
+                    combinedCriteria = combinedCriteria.or(queryCriteria);
+                }
+            }
+        }
+        
+        return combinedCriteria;
+    }
+    
+    /**
+     * Check if a search result matches a specific query for the given monitor type
+     */
+    private boolean resultMatchesQuery(BreachDataIndex breach, String query, CommonEnums.MonitorType monitorType) {
+        if (breach == null || query == null) {
+            return false;
+        }
+        
+        String lowerQuery = query.toLowerCase().trim();
+        
+        return switch (monitorType) {
+            case EMAIL -> breach.getLogin() != null && breach.getLogin().toLowerCase().equals(lowerQuery);
+            case DOMAIN -> breach.getLogin() != null && breach.getLogin().toLowerCase().endsWith("@" + lowerQuery);
+            case USERNAME -> breach.getLogin() != null && breach.getLogin().toLowerCase().equals(lowerQuery);
+            case KEYWORD -> {
+                boolean loginMatch = breach.getLogin() != null && breach.getLogin().toLowerCase().contains(lowerQuery);
+                boolean urlMatch = breach.getUrl() != null && breach.getUrl().toLowerCase().contains(lowerQuery);
+                boolean passwordMatch = breach.getPassword() != null && breach.getPassword().toLowerCase().contains(lowerQuery);
+                yield loginMatch || urlMatch || passwordMatch;
+            }
+            case IP_ADDRESS -> breach.getUrl() != null && breach.getUrl().toLowerCase().contains(lowerQuery);
+            case PHONE, ORGANIZATION -> {
+                boolean loginMatch = breach.getLogin() != null && breach.getLogin().toLowerCase().contains(lowerQuery);
+                boolean urlMatch = breach.getUrl() != null && breach.getUrl().toLowerCase().contains(lowerQuery);
+                yield loginMatch || urlMatch;
+            }
+        };
+    }
+    
+    /**
+     * Build search result map from BreachDataIndex for monitoring alerts
+     */
+    private Map<String, Object> buildSearchResultMap(BreachDataIndex breach) {
+        Map<String, Object> result = new HashMap<>();
+        
+        result.put("id", breach.getId());
+        result.put("login", breach.getLogin());
+        result.put("password", breach.getPassword());
+        result.put("url", breach.getUrl());
+        result.put("source", "ThreatScope Database"); // Generic source name
+        result.put("breach_date", breach.getTimestamp());
+        result.put("additional_data", buildAdditionalData(breach));
+        
+        return result;
+    }
 }

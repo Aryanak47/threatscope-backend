@@ -21,7 +21,8 @@ import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
-@Component
+// DISABLED: Replaced by OptimizedMonitoringScheduler
+// @Component
 @RequiredArgsConstructor
 @Slf4j
 public class MonitoringScheduler {

@@ -13,6 +13,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +47,124 @@ public class BreachDetectionService {
         } catch (Exception e) {
             log.error("Error checking monitoring item {}: {}", item.getId(), e.getMessage(), e);
         }
+    }
+    
+    /**
+     * OPTIMIZED: Process multiple monitoring items in bulk for better performance
+     */
+    public void processBulkMonitoringItems(List<MonitoringItem> items) {
+        log.debug("Processing {} monitoring items in bulk", items.size());
+        
+        try {
+            // Group items by monitor type for bulk search optimization
+            Map<CommonEnums.MonitorType, List<MonitoringItem>> groupedItems = items.stream()
+                .collect(Collectors.groupingBy(MonitoringItem::getMonitorType));
+            
+            // Process each group with optimized bulk searches
+            for (Map.Entry<CommonEnums.MonitorType, List<MonitoringItem>> entry : groupedItems.entrySet()) {
+                CommonEnums.MonitorType monitorType = entry.getKey();
+                List<MonitoringItem> typeItems = entry.getValue();
+                
+                log.debug("Processing {} items of type {}", typeItems.size(), monitorType);
+                
+                // Perform bulk search for this monitor type
+                Map<String, List<Map<String, Object>>> bulkResults = performBulkSearch(typeItems, monitorType);
+                
+                // Process results for each item
+                for (MonitoringItem item : typeItems) {
+                    try {
+                        // Record check
+                        monitoringService.recordCheck(item.getId());
+                        
+                        // Get results for this specific item
+                        List<Map<String, Object>> itemResults = bulkResults.getOrDefault(item.getTargetValue(), List.of());
+                        
+                        // Process results and create alerts
+                        processSearchResults(item, itemResults);
+                        
+                    } catch (Exception e) {
+                        log.error("Error processing bulk item {}: {}", item.getId(), e.getMessage());
+                    }
+                }
+            }
+            
+            log.debug("Completed bulk processing for {} monitoring items", items.size());
+            
+        } catch (Exception e) {
+            log.error("Error in bulk processing, falling back to individual processing: {}", e.getMessage());
+            
+            // Fallback to individual processing
+            for (MonitoringItem item : items) {
+                try {
+                    checkMonitoringItem(item);
+                } catch (Exception individualError) {
+                    log.error("Error in individual fallback processing for item {}: {}", item.getId(), individualError.getMessage());
+                }
+            }
+        }
+    }
+    
+    /**
+     * Perform bulk search for multiple monitoring items of the same type
+     */
+    private Map<String, List<Map<String, Object>>> performBulkSearch(List<MonitoringItem> items, CommonEnums.MonitorType monitorType) {
+        Map<String, List<Map<String, Object>>> results = new HashMap<>();
+        
+        try {
+            // Collect all target values for bulk search
+            List<String> targetValues = items.stream()
+                .map(MonitoringItem::getTargetValue)
+                .distinct()
+                .toList();
+            
+            // Build bulk search queries
+            List<String> searchQueries = targetValues.stream()
+                .map(targetValue -> buildSearchQueryForValue(targetValue, monitorType))
+                .toList();
+            
+            // Perform bulk search using the search service
+            Map<String, List<Map<String, Object>>> bulkSearchResults = searchService.bulkSearchForMonitoring(searchQueries, monitorType);
+            
+            // Map results back to target values
+            for (int i = 0; i < targetValues.size(); i++) {
+                String targetValue = targetValues.get(i);
+                String searchQuery = searchQueries.get(i);
+                
+                List<Map<String, Object>> queryResults = bulkSearchResults.getOrDefault(searchQuery, List.of());
+                results.put(targetValue, queryResults);
+            }
+            
+        } catch (Exception e) {
+            log.error("Error in bulk search for {} items: {}", items.size(), e.getMessage());
+            
+            // Fallback to individual searches
+            for (MonitoringItem item : items) {
+                try {
+                    List<Map<String, Object>> individualResults = performSearch(item);
+                    results.put(item.getTargetValue(), individualResults);
+                } catch (Exception individualError) {
+                    log.error("Error in individual search fallback for item {}: {}", item.getId(), individualError.getMessage());
+                    results.put(item.getTargetValue(), List.of());
+                }
+            }
+        }
+        
+        return results;
+    }
+    
+    /**
+     * Build search query for a specific target value and monitor type
+     */
+    private String buildSearchQueryForValue(String targetValue, CommonEnums.MonitorType monitorType) {
+        return switch (monitorType) {
+            case EMAIL -> targetValue;
+            case DOMAIN -> "*@" + targetValue;
+            case USERNAME -> targetValue;
+            case KEYWORD -> targetValue;
+            case IP_ADDRESS -> targetValue;
+            case PHONE -> targetValue;
+            case ORGANIZATION -> targetValue;
+        };
     }
     
     private List<Map<String, Object>> performSearch(MonitoringItem item) {

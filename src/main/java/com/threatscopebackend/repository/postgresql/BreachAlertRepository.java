@@ -106,7 +106,22 @@ public interface BreachAlertRepository extends JpaRepository<BreachAlert, Long> 
            "ORDER BY a.severity DESC, a.createdAt DESC")
     List<BreachAlert> findHighPriorityAlerts(@Param("user") User user);
     
-    // Cleanup old archived alerts
+    // OPTIMIZED: Paginated alerts needing notification
+    @Query(value = "SELECT * FROM breach_alerts WHERE notification_sent = false " +
+           "AND created_at > :cutoffTime ORDER BY severity DESC, created_at ASC LIMIT :size OFFSET :offset", 
+           nativeQuery = true)
+    List<BreachAlert> findAlertsNeedingNotificationPaginated(@Param("cutoffTime") LocalDateTime cutoffTime, 
+                                                             @Param("offset") int offset, 
+                                                             @Param("size") int size);
+    
+    // OPTIMIZED: Batch cleanup of old archived alerts
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM breach_alerts WHERE status = 'DISMISSED' AND dismissed_at < :cutoffDate LIMIT :batchSize", 
+           nativeQuery = true)
+    int deleteOldArchivedAlertsBatch(@Param("cutoffDate") LocalDateTime cutoffDate, @Param("batchSize") int batchSize);
+    
+    // Cleanup old archived alerts (original method)
     @Modifying
     @Transactional
     @Query("DELETE FROM BreachAlert a WHERE a.status = 'DISMISSED' AND a.dismissedAt < :cutoffDate")

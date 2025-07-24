@@ -323,6 +323,12 @@
             <version>2.35.1</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- Jakarta Annotations for @PreDestroy, @PostConstruct -->
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>
