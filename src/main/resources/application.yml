@@ -38,6 +38,7 @@ app:
     expiration: 86400000  # 24 hours in milliseconds
     refresh-expiration: 604800000  # 7 days in milliseconds
 
+
 # Logging Configuration
 # API Documentation - Common settings
 springdoc:
@@ -93,3 +94,36 @@ logging:
     root: INFO
     org.springframework: INFO
     com.threatscopebackend: DEBUG
+
+# Monitoring Configuration
+monitoring:
+  scheduler:
+    enabled: true
+    optimized: true
+    # These will be overridden by database configurations
+  real_time:
+    interval: 300000  # 5 minutes
+    max_checks: 100
+    batch_size: 20
+  hourly:
+    interval: 3600000  # 1 hour
+  daily:
+    interval: 86400000  # 24 hours
+  weekly:
+    interval: 604800000  # 7 days
+  max_concurrent_checks: 50
+  batch_size: 10
+  max_parallel_threads: 20
+
+alerts:
+  max_per_day: 1000
+  cleanup_days: 90
+
+notifications:
+  batch_size: 100
+
+cleanup:
+  batch_size: 1000
+
+system:
+  health_check_interval: 600000  # 10 minutes

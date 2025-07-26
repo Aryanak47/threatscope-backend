@@ -20,17 +20,25 @@ public class MonitoringConfigurationService {
     private final MonitoringConfigurationRepository configRepository;
     
     // Default monitoring intervals (in milliseconds)
-    private static final Map<String, String> DEFAULT_CONFIGS = Map.of(
-        "monitoring.real_time.interval", "300000",      // 5 minutes
-        "monitoring.hourly.interval", "3600000",        // 1 hour
-        "monitoring.daily.interval", "86400000",        // 24 hours
-        "monitoring.weekly.interval", "604800000",      // 7 days
-        "monitoring.max_concurrent_checks", "50",       // Max concurrent monitoring checks
-        "alerts.max_per_day", "1000",                   // Max alerts per day
-        "alerts.cleanup_days", "90",                    // Days to keep archived alerts
-        "notifications.retry_attempts", "3",            // Notification retry attempts
-        "notifications.retry_delay", "60000",           // 1 minute retry delay
-        "system.health_check_interval", "600000"        // 10 minutes system health check
+    private static final Map<String, String> DEFAULT_CONFIGS = Map.ofEntries(
+        Map.entry("monitoring.real_time.interval", "300000"),      // 5 minutes
+        Map.entry("monitoring.hourly.interval", "3600000"),        // 1 hour
+        Map.entry("monitoring.daily.interval", "86400000"),        // 24 hours
+        Map.entry("monitoring.weekly.interval", "604800000"),      // 7 days
+        Map.entry("monitoring.max_concurrent_checks", "50"),       // Max concurrent monitoring checks
+        Map.entry("alerts.max_per_day", "1000"),                   // Max alerts per day
+        Map.entry("alerts.cleanup_days", "90"),                    // Days to keep archived alerts
+        Map.entry("notifications.retry_attempts", "3"),            // Notification retry attempts
+        Map.entry("notifications.retry_delay", "60000"),           // 1 minute retry delay
+        Map.entry("system.health_check_interval", "600000"),        // 10 minutes system health check
+        
+        // ADDITIONAL CONFIGS needed by OptimizedMonitoringScheduler
+        Map.entry("monitoring.real_time.max_checks", "100"),       // Max real-time checks per cycle
+        Map.entry("monitoring.real_time.batch_size", "20"),        // Real-time batch size
+        Map.entry("monitoring.batch_size", "10"),                  // General batch size
+        Map.entry("monitoring.max_parallel_threads", "20"),        // Max parallel threads
+        Map.entry("notifications.batch_size", "100"),              // Notification batch size
+        Map.entry("cleanup.batch_size", "1000")                    // Cleanup batch size
     );
     
     /**

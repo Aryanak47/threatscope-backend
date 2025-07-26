@@ -256,6 +256,12 @@
             <version>32.1.3-jre</version>
         </dependency>
 
+        <!-- Spring WebSocket and STOMP Messaging - COMPLETE STARTER -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- Rate Limiting -->
         <dependency>
             <groupId>com.github.vladimir-bukhtoyarov</groupId>

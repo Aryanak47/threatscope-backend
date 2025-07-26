@@ -315,6 +315,19 @@ public class MonitoringService {
     }
     
     /**
+     * FIXED: Get real-time items that need checking with JOIN FETCH to prevent lazy loading issues
+     */
+    public List<MonitoringItem> getRealTimeItemsNeedingCheck() {
+        LocalDateTime now = LocalDateTime.now();
+        
+        // Get real-time items with eagerly loaded user data to avoid Hibernate lazy loading issues
+        List<MonitoringItem> realTimeItems = monitoringItemRepository.findRealTimeItemsNeedingCheck(now.minusMinutes(5));
+        
+        log.info("Found {} real-time monitoring items that need checking", realTimeItems.size());
+        return realTimeItems;
+    }
+    
+    /**
      * Record that a monitoring item has been checked
      */
     @Transactional

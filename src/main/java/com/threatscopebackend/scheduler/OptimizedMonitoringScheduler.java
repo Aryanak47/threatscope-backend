@@ -29,11 +29,13 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.stream.Collectors;
 import com.threatscopebackend.websocket.RealTimeNotificationService;
 import jakarta.annotation.PreDestroy;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
+@ConditionalOnProperty(name = "monitoring.scheduler.optimized", havingValue = "true", matchIfMissing = true)
 public class OptimizedMonitoringScheduler {
     
     private final MonitoringService monitoringService;
@@ -56,6 +58,25 @@ public class OptimizedMonitoringScheduler {
     // Performance tracking
     private final Map<String, Long> lastProcessingTimes = new ConcurrentHashMap<>();
     private final Map<String, Integer> processingCounts = new ConcurrentHashMap<>();
+    
+    // Constructor with @Qualifier for TaskScheduler
+    public OptimizedMonitoringScheduler(
+            MonitoringService monitoringService,
+            AlertService alertService,
+            BreachDetectionService breachDetectionService,
+            MonitoringConfigurationService configService,
+            SubscriptionService subscriptionService,
+            @Qualifier("monitoringTaskScheduler") TaskScheduler taskScheduler,
+            RealTimeNotificationService realTimeNotificationService) {
+        
+        this.monitoringService = monitoringService;
+        this.alertService = alertService;
+        this.breachDetectionService = breachDetectionService;
+        this.configService = configService;
+        this.subscriptionService = subscriptionService;
+        this.taskScheduler = taskScheduler;
+        this.realTimeNotificationService = realTimeNotificationService;
+    }
     
     /**
      * Create optimized thread pool for monitoring tasks
@@ -318,14 +339,14 @@ public class OptimizedMonitoringScheduler {
     
     /**
      * Get real-time monitoring items for users with real-time feature
+     * FIXED: Uses JOIN FETCH to prevent Hibernate lazy loading issues
      */
     private List<MonitoringItem> getRealTimeMonitoringItems(int maxChecks) {
         try {
-            // Get items that need checking for REAL_TIME frequency
-            List<MonitoringItem> allItems = monitoringService.getItemsNeedingCheck();
+            // FIXED: Use JOIN FETCH method for real-time items to avoid lazy loading issues
+            List<MonitoringItem> realTimeItems = monitoringService.getRealTimeItemsNeedingCheck();
             
-            return allItems.stream()
-                .filter(item -> item.getFrequency() == CommonEnums.MonitorFrequency.REAL_TIME)
+            return realTimeItems.stream()
                 .filter(item -> subscriptionService.canUseMonitoringFrequency(item.getUser(), CommonEnums.MonitorFrequency.REAL_TIME))
                 .limit(maxChecks)
                 .toList();
@@ -501,13 +522,92 @@ public class OptimizedMonitoringScheduler {
 
     
 
+    /**
+     * Clean up old archived alerts daily at 2 AM (optimized)
+     */
+    @Scheduled(cron = "0 0 2 * * *") // Daily at 2 AM
+    public void cleanupOldAlertsOptimized() {
+        log.info("🧹 Starting optimized cleanup of old archived alerts");
+        
+        try {
+            Integer daysToKeep = configService.getConfigValueAsInt("alerts.cleanup_days");
+            Integer batchSize = configService.getConfigValueAsInt("cleanup.batch_size");
+            
+            // Clean up in batches to avoid database locks
+            int totalDeleted = alertService.cleanupOldArchivedAlertsBatched(daysToKeep, batchSize);
+            
+            log.info("✅ Optimized cleanup completed: {} old archived alerts cleaned up", totalDeleted);
+            
+        } catch (Exception e) {
+            log.error("Error during optimized alert cleanup: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Performance monitoring and reporting every hour
+     */
+    @Scheduled(fixedRate = 3600000) // 1 hour
+    public void reportPerformanceMetrics() {
+        log.info("📊 === MONITORING SCHEDULER PERFORMANCE REPORT ===");
+        
+        for (Map.Entry<String, Long> entry : lastProcessingTimes.entrySet()) {
+            String frequency = entry.getKey();
+            Long duration = entry.getValue();
+            Integer count = processingCounts.getOrDefault(frequency, 0);
+            
+            double itemsPerSecond = count > 0 && duration > 0 ? (count * 1000.0) / duration : 0;
+            
+            log.info("📈 {} monitoring: {} items in {}ms ({:.2f} items/sec)", 
+                    frequency, count, duration, itemsPerSecond);
+        }
+        
+        // Thread pool statistics
+        log.info("🧵 Thread pool stats - Active: {}, Completed: {}, Queue: {}", 
+                monitoringExecutor.getActiveCount(),
+                monitoringExecutor.getThreadPoolExecutor().getCompletedTaskCount(),
+                monitoringExecutor.getThreadPoolExecutor().getQueue().size());
+                
+        log.info("📊 === END PERFORMANCE REPORT ===");
+    }
     
     /**
      * System health check (optimized)
      */
-
-
+    @Scheduled(fixedRateString = "#{@monitoringConfigurationService.getConfigValueAsLong('system.health_check_interval')}")
+    public void performOptimizedSystemHealthCheck() {
+        log.debug("🏥 Performing optimized system health check");
+        
+        try {
+            // Check system performance and resources
+            performOptimizedHealthChecks();
+            
+        } catch (Exception e) {
+            log.error("Error during optimized system health check: {}", e.getMessage(), e);
+        }
+    }
     
+    private void performOptimizedHealthChecks() {
+        // Monitor thread pool health
+        if (monitoringExecutor.getActiveCount() > 40) {
+            log.warn("⚠️ High thread pool usage: {} active threads", monitoringExecutor.getActiveCount());
+        }
+        
+        // Monitor queue size
+        int queueSize = monitoringExecutor.getThreadPoolExecutor().getQueue().size();
+        if (queueSize > 500) {
+            log.warn("⚠️ High queue size: {} pending tasks", queueSize);
+        }
+        
+        log.debug("✅ Optimized system health check completed successfully");
+    }
+    
+    /**
+     * Reload optimized scheduling configuration
+     */
+    public void reloadOptimizedSchedulingConfiguration() {
+        log.info("🔄 Reloading optimized monitoring scheduling configuration");
+        scheduleOptimizedMonitoringTasks();
+    }
 
     
     /**

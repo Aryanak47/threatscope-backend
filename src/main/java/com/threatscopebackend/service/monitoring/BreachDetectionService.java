@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import com.threatscopebackend.websocket.RealTimeNotificationService;
 import java.util.stream.Collectors;
 
 @Service
@@ -25,6 +26,7 @@ public class BreachDetectionService {
     private final AlertService alertService;
     private final MonitoringService monitoringService;
     private final ObjectMapper objectMapper;
+    private final RealTimeNotificationService realTimeNotificationService;
     
     /**
      * Check a monitoring item for new breaches
@@ -221,18 +223,42 @@ public class BreachDetectionService {
             return results;
         }
         
-        // Filter results based on breach date or creation date
+        // FIXED: Better filtering for null breach dates to prevent duplicates
         return results.stream()
             .filter(result -> {
                 try {
+                    String breachId = (String) result.get("id");
+                    
+                    // If we have a breach ID, check if we've processed it recently
+                    if (breachId != null && !breachId.trim().isEmpty()) {
+                        // Check if this breach ID was processed in the last check cycle
+                        // For now, we'll use a simple time-based approach
+                        // TODO: Implement proper breach ID tracking in database
+                        
+                        String dateStr = (String) result.get("breach_date");
+                        if (dateStr != null && !"null".equals(dateStr)) {
+                            LocalDateTime breachDate = LocalDateTime.parse(dateStr);
+                            return breachDate.isAfter(lastCheck);
+                        } else {
+                            // FIXED: For null dates, only include if not processed recently
+                            // Conservative approach: skip null-date breaches if checked within last hour
+                            return lastCheck.isBefore(LocalDateTime.now().minusHours(1));
+                        }
+                    }
+                    
+                    // If no breach ID, use date-based filtering
                     String dateStr = (String) result.get("breach_date");
-                    if (dateStr != null) {
+                    if (dateStr != null && !"null".equals(dateStr)) {
                         LocalDateTime breachDate = LocalDateTime.parse(dateStr);
                         return breachDate.isAfter(lastCheck);
                     }
-                    return true; // Include if no date information
+                    
+                    // FIXED: Be very conservative with null dates - only include if last check was > 6 hours ago
+                    return lastCheck.isBefore(LocalDateTime.now().minusHours(6));
+                    
                 } catch (Exception e) {
-                    return true; // Include if date parsing fails
+                    log.debug("Error filtering result, excluding: {}", e.getMessage());
+                    return false; // Exclude problematic results
                 }
             })
             .toList();
@@ -240,6 +266,16 @@ public class BreachDetectionService {
     
     private void createAlertFromResult(MonitoringItem item, Map<String, Object> result) {
         try {
+            // FIXED: Check for potential duplicates using breach content hash
+            String breachId = (String) result.get("id");
+            String contentHash = generateSimpleContentHash(item, result);
+            
+            // Quick duplicate check - if we have an alert with same content hash in last 24 hours, skip
+            if (breachId != null && alertService.hasRecentAlertWithSimilarContent(item, contentHash)) {
+                log.debug("Skipping potential duplicate alert for breach ID: {} (item: {})", breachId, item.getId());
+                return;
+            }
+            
             String title = buildAlertTitle(item, result);
             String description = buildAlertDescription(item, result);
             CommonEnums.AlertSeverity severity = determineSeverity(item, result);
@@ -247,10 +283,47 @@ public class BreachDetectionService {
             LocalDateTime breachDate = parseBreachDate(result);
             String breachData = convertResultToJson(result);
             
-            alertService.createAlert(item, title, description, severity, breachSource, breachDate, breachData);
+            BreachAlert alert = alertService.createAlert(item, title, description, severity, breachSource, breachDate, breachData);
+            
+            // 🚀 REAL-TIME FEATURE: Send instant WebSocket notification for critical alerts
+            if (severity == CommonEnums.AlertSeverity.CRITICAL) {
+                try {
+                    // Send immediate real-time notification for critical alerts
+                    realTimeNotificationService.sendRealTimeAlert(alert).thenAccept(sent -> {
+                        if (sent) {
+                            log.info("⚡ CRITICAL alert sent via WebSocket immediately: {}", alert.getId());
+                        } else {
+                            log.debug("📱 User offline - CRITICAL alert will be delivered via email: {}", alert.getId());
+                        }
+                    });
+                } catch (Exception e) {
+                    log.error("❌ Failed to send real-time notification for alert {}: {}", alert.getId(), e.getMessage());
+                    // Don't fail the entire alert creation if real-time notification fails
+                }
+            }
             
         } catch (Exception e) {
             log.error("Error creating alert for monitoring item {}: {}", item.getId(), e.getMessage());
+        }
+    }
+    
+    /**
+     * Generate a simple content hash for duplicate detection
+     */
+    private String generateSimpleContentHash(MonitoringItem item, Map<String, Object> result) {
+        try {
+            StringBuilder hashInput = new StringBuilder();
+            hashInput.append(item.getId()).append("|");
+            hashInput.append(result.get("login")).append("|");
+            hashInput.append(result.get("password")).append("|");
+            hashInput.append(result.get("source")).append("|");
+            hashInput.append(result.get("url"));
+            
+            // Simple hash using built-in hashCode (not cryptographic, but sufficient for duplicate detection)
+            return String.valueOf(hashInput.toString().hashCode());
+        } catch (Exception e) {
+            log.debug("Error generating content hash: {}", e.getMessage());
+            return String.valueOf(System.currentTimeMillis()); // Fallback to timestamp
         }
     }
     

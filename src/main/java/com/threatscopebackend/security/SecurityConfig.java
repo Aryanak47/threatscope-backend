@@ -73,6 +73,11 @@ public class SecurityConfig {
                 .requestMatchers("/mock-payment/test-methods").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
                 
+                // WebSocket endpoints - MUST BE BEFORE authenticated() rules
+                .requestMatchers("/ws/**").permitAll()
+                .requestMatchers("/api/ws/**").permitAll()
+                .requestMatchers("/api/realtime/**").authenticated()
+                
                 // Protected endpoints require authentication
                 .requestMatchers("/user/**").authenticated()
                 .requestMatchers("/mock-payment/process").authenticated()
@@ -91,11 +96,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "http://localhost:8080", "*")); // Allow all origins for testing
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "http://localhost:8080")); // Specific origins when using credentials
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*")); // Allow all headers
         configuration.setExposedHeaders(Arrays.asList("x-auth-token"));
-        configuration.setAllowCredentials(false); // Set to false when allowing all origins
+        configuration.setAllowCredentials(true); // Enable credentials for WebSocket/SockJS
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

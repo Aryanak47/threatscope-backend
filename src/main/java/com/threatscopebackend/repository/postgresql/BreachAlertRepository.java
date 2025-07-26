@@ -48,6 +48,11 @@ public interface BreachAlertRepository extends JpaRepository<BreachAlert, Long> 
            "AND a.createdAt > :since ORDER BY a.createdAt DESC")
     List<BreachAlert> findRecentAlerts(@Param("user") User user, @Param("since") LocalDateTime since);
     
+    // ADDED: Find recent alerts for a specific monitoring item (for duplicate detection)
+    @Query("SELECT a FROM BreachAlert a WHERE a.monitoringItem = :item " +
+           "AND a.createdAt > :since ORDER BY a.createdAt DESC")
+    List<BreachAlert> findRecentAlertsForItem(@Param("item") MonitoringItem item, @Param("since") LocalDateTime since);
+    
     // Find alerts by severity
     List<BreachAlert> findByUserAndSeverityInOrderByCreatedAtDesc(User user, List<CommonEnums.AlertSeverity> severities);
     

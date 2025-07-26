@@ -58,6 +58,12 @@ public interface MonitoringItemRepository extends JpaRepository<MonitoringItem, 
            "AND (m.lastChecked IS NULL OR m.lastChecked < :checkTime)")
     List<MonitoringItem> findItemsNeedingCheck(@Param("checkTime") LocalDateTime checkTime);
     
+    // FIXED: Find real-time items that need checking with eager user loading
+    @Query("SELECT m FROM MonitoringItem m JOIN FETCH m.user " +
+           "WHERE m.frequency = 'REAL_TIME' AND m.isActive = true " +
+           "AND (m.lastChecked IS NULL OR m.lastChecked < :checkTime)")
+    List<MonitoringItem> findRealTimeItemsNeedingCheck(@Param("checkTime") LocalDateTime checkTime);
+    
     // Find items by frequency for scheduled checking
     List<MonitoringItem> findByFrequencyAndIsActiveTrue(CommonEnums.MonitorFrequency frequency);
     

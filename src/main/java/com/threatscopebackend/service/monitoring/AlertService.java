@@ -32,6 +32,44 @@ public class AlertService {
     private final NotificationService notificationService;
     
     /**
+     * Check if there's a recent alert with similar content to prevent duplicates
+     * ADDED: Simple duplicate detection mechanism
+     */
+    public boolean hasRecentAlertWithSimilarContent(MonitoringItem item, String contentHash) {
+        try {
+            LocalDateTime cutoffTime = LocalDateTime.now().minusHours(24); // Check last 24 hours
+            
+            // Simple check: look for alerts with same description pattern in last 24 hours
+            List<BreachAlert> recentAlerts = breachAlertRepository.findRecentAlertsForItem(item, cutoffTime);
+            
+            if (recentAlerts.size() > 5) { // If more than 5 alerts in 24 hours, likely duplicates
+                log.warn("High alert volume detected for item {}: {} alerts in 24 hours - applying duplicate filtering", 
+                        item.getId(), recentAlerts.size());
+                return true; // Block additional alerts temporarily
+            }
+            
+            // Check for exact content matches (simple approach)
+            String hashToCheck = contentHash;
+            for (BreachAlert alert : recentAlerts) {
+                if (alert.getBreachData() != null) {
+                    // Generate hash from existing alert and compare
+                    String existingHash = String.valueOf(alert.getBreachData().hashCode());
+                    if (hashToCheck.equals(existingHash)) {
+                        log.debug("Found duplicate alert content for item {}", item.getId());
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+            
+        } catch (Exception e) {
+            log.error("Error checking for duplicate alerts: {}", e.getMessage());
+            return false; // If check fails, allow alert creation
+        }
+    }
+    
+    /**
      * Create a new breach alert
      */
     @Transactional

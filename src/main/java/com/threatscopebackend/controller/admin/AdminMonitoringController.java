@@ -7,7 +7,7 @@ import com.threatscopebackend.entity.postgresql.User;
 import com.threatscopebackend.repository.postgresql.PlanRepository;
 import com.threatscopebackend.service.admin.MonitoringConfigurationService;
 import com.threatscopebackend.service.subscription.SubscriptionService;
-import com.threatscopebackend.scheduler.MonitoringScheduler;
+import com.threatscopebackend.scheduler.OptimizedMonitoringScheduler;
 import com.threatscopebackend.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -36,7 +36,7 @@ public class AdminMonitoringController {
     private final MonitoringConfigurationService configService;
     private final SubscriptionService subscriptionService;
     private final PlanRepository planRepository;
-    private final MonitoringScheduler monitoringScheduler;
+    private final OptimizedMonitoringScheduler optimizedMonitoringScheduler;
     
     // =============== MONITORING CONFIGURATION MANAGEMENT ===============
     
@@ -73,7 +73,7 @@ public class AdminMonitoringController {
         
         // Reload scheduling if monitoring configuration changed
         if (key.startsWith("monitoring.")) {
-            monitoringScheduler.reloadSchedulingConfiguration();
+            optimizedMonitoringScheduler.reloadOptimizedSchedulingConfiguration();
         }
         
         return ResponseEntity.ok(ApiResponse.success("Configuration updated successfully", updated));
@@ -123,7 +123,7 @@ public class AdminMonitoringController {
                 .anyMatch(key -> key.startsWith("monitoring."));
         
         if (hasMonitoringConfig) {
-            monitoringScheduler.reloadSchedulingConfiguration();
+            optimizedMonitoringScheduler.reloadOptimizedSchedulingConfiguration();
         }
         
         return ResponseEntity.ok(ApiResponse.success(
@@ -140,8 +140,8 @@ public class AdminMonitoringController {
     @Operation(summary = "Reload monitoring scheduler configuration")
     @PostMapping("/monitoring/reload-scheduler")
     public ResponseEntity<ApiResponse<String>> reloadScheduler(@CurrentUser User admin) {
-        monitoringScheduler.reloadSchedulingConfiguration();
-        return ResponseEntity.ok(ApiResponse.success("Monitoring scheduler reloaded successfully", null));
+        optimizedMonitoringScheduler.reloadOptimizedSchedulingConfiguration();
+        return ResponseEntity.ok(ApiResponse.success("Optimized monitoring scheduler reloaded successfully", null));
     }
     
     // =============== SUBSCRIPTION PLAN MANAGEMENT ===============
