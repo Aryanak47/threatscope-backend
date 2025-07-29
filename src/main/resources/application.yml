@@ -4,6 +4,30 @@ spring:
     username: postgres
     password: yourpassword
     driver-class-name: org.postgresql.Driver
+    
+    # ✅ FIXED: Added HikariCP configuration to prevent thread starvation
+    hikari:
+      # Increase pool size to handle monitoring load
+      maximum-pool-size: 30          # ✅ Was: 10 (default), Now: 30
+      minimum-idle: 10               # ✅ Keep 10 connections ready
+      
+      # Faster timeouts to prevent thread starvation
+      connection-timeout: 10000      # ✅ 10 seconds (was 30)
+      idle-timeout: 300000           # ✅ 5 minutes
+      max-lifetime: 900000           # ✅ 15 minutes
+      
+      # Better leak detection and monitoring
+      leak-detection-threshold: 30000  # ✅ 30 seconds (was 60)
+      
+      # PostgreSQL optimizations
+      data-source-properties:
+        tcpKeepAlive: true
+        socketTimeout: 30
+        loginTimeout: 10
+        prepareThreshold: 3
+        
+      # Pool monitoring
+      pool-name: "ThreatScope-HikariCP"
   jpa:
     hibernate:
       ddl-auto: validate
@@ -94,6 +118,12 @@ logging:
     root: INFO
     org.springframework: INFO
     com.threatscopebackend: DEBUG
+    
+    # ✅ FIXED: Added HikariCP monitoring to detect connection issues
+    com.zaxxer.hikari.HikariConfig: INFO
+    com.zaxxer.hikari.HikariDataSource: INFO
+    com.zaxxer.hikari.pool.HikariPool: WARN
+    com.zaxxer.hikari.pool.PoolBase: WARN
 
 # Monitoring Configuration
 monitoring:

@@ -80,17 +80,23 @@ public class OptimizedMonitoringScheduler {
     
     /**
      * Create optimized thread pool for monitoring tasks
+     * FIXED: Reduced thread pool size to prevent database connection exhaustion
      */
     private ThreadPoolTaskExecutor createMonitoringExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(10);
-        executor.setMaxPoolSize(50);
-        executor.setQueueCapacity(1000);
+        
+        // ✅ FIXED: Reduced thread pool size to match database connection capacity
+        executor.setCorePoolSize(5);     // ✅ Was: 10, Now: 5 (matches DB connections)
+        executor.setMaxPoolSize(15);     // ✅ Was: 50, Now: 15 (was causing thread starvation)
+        executor.setQueueCapacity(100);  // ✅ Was: 1000, Now: 100 (more reasonable)
+        
         executor.setThreadNamePrefix("MonitoringTask-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(60);
         executor.initialize();
+        
+        log.info("✅ FIXED: Monitoring thread pool configured - Core: 5, Max: 15, Queue: 100");
         return executor;
     }
     

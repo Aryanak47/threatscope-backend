@@ -2,8 +2,14 @@ package com.threatscopebackend.dto.monitoring;
 
 import com.threatscopebackend.entity.enums.CommonEnums;
 import com.threatscopebackend.entity.postgresql.BreachAlert;
+import com.threatscopebackend.entity.postgresql.User;
+import com.threatscopebackend.service.monitoring.PasswordMaskingService;
 import lombok.Data;
 import lombok.Builder;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 
@@ -65,8 +71,31 @@ public class BreachAlertResponse {
     private Boolean isStale;
     private LocalDateTime lastActionTime;
     
-    public static BreachAlertResponse fromEntity(BreachAlert alert) {
+    // Password visibility info for frontend
+    private Boolean canViewFullPasswords;
+    private String passwordMaskingInfo;
+    
+    /**
+     * Create response with subscription-based password masking
+     */
+    public static BreachAlertResponse fromEntityWithUser(BreachAlert alert, User user, PasswordMaskingService passwordMaskingService) {
         if (alert == null) return null;
+        
+        // Get user's plan type for password masking
+        CommonEnums.PlanType planType = user != null && user.getSubscription() != null ? 
+            user.getSubscription().getPlanType() : CommonEnums.PlanType.FREE;
+            
+        // Mask sensitive data based on subscription
+        String maskedBreachData = passwordMaskingService != null ? 
+            passwordMaskingService.maskSensitiveDataBasedOnPlan(alert.getBreachData(), planType) : 
+            alert.getBreachData();
+            
+        boolean canViewPasswords = passwordMaskingService != null && 
+            passwordMaskingService.canViewFullPasswords(planType);
+            
+        String maskingInfo = passwordMaskingService != null ? 
+            passwordMaskingService.getMaskingDescription(planType) : 
+            "Password visibility depends on subscription plan.";
         
         return BreachAlertResponse.builder()
             .id(alert.getId())
@@ -76,7 +105,7 @@ public class BreachAlertResponse {
             .severity(alert.getSeverity())
             .breachSource(alert.getBreachSource())
             .breachDate(alert.getBreachDate())
-            .breachData(alert.getBreachData())
+            .breachData(maskedBreachData)  // ✅ Backend masked based on subscription
             .affectedEmail(alert.getAffectedEmail())
             .affectedDomain(alert.getAffectedDomain())
             .affectedUsername(alert.getAffectedUsername())
@@ -120,7 +149,19 @@ public class BreachAlertResponse {
             .isHighPriority(alert.isHighPriority())
             .isStale(alert.isStale())
             .lastActionTime(alert.getLastActionTime())
+            .canViewFullPasswords(canViewPasswords)
+            .passwordMaskingInfo(maskingInfo)
             .build();
+    }
+    
+    /**
+     * Legacy method for backward compatibility
+     * @deprecated Use fromEntityWithUser instead for proper password masking
+     */
+    @Deprecated
+    public static BreachAlertResponse fromEntity(BreachAlert alert) {
+        // Use the new method with no user (defaults to FREE plan masking)
+        return fromEntityWithUser(alert, null, null);
     }
     
     private static String determinePriorityLevel(CommonEnums.AlertSeverity severity) {

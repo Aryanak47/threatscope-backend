@@ -43,6 +43,9 @@ public interface BreachAlertRepository extends JpaRepository<BreachAlert, Long> 
     
     long countByUserAndStatus(User user, CommonEnums.AlertStatus status);
     
+    // Count alerts by user and multiple statuses
+    long countByUserAndStatusIn(User user, List<CommonEnums.AlertStatus> statuses);
+    
     // Find recent alerts
     @Query("SELECT a FROM BreachAlert a WHERE a.user = :user " +
            "AND a.createdAt > :since ORDER BY a.createdAt DESC")

@@ -6,8 +6,10 @@ import com.threatscopebackend.dto.SearchRequest;
 import com.threatscopebackend.dto.SearchResponse;
 import com.threatscopebackend.elasticsearch.BreachDataIndex;
 import com.threatscopebackend.entity.enums.CommonEnums;
+import com.threatscopebackend.entity.postgresql.User;
 import com.threatscopebackend.repository.elasticsearch.BreachDataRepository;
 import com.threatscopebackend.repository.mongo.StealerLogRepository;
+import com.threatscopebackend.repository.postgresql.UserRepository;
 import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.data.IndexNameProvider;
 import com.threatscopebackend.service.search.MultiIndexSearchService;
@@ -45,6 +47,7 @@ public class SearchService {
     private final ElasticsearchConfig elasticsearchConfig;
     private final IndexNameProvider indexNameProvider;
     private final UsageService usageService;
+    private final UserRepository userRepository;
 
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
@@ -445,14 +448,25 @@ public class SearchService {
     }
 
     /**
-     * Convert StealerLog to enhanced SearchResult DTO with security
+     * Convert StealerLog to enhanced SearchResult DTO with subscription-based password masking
      */
-    private Optional<SearchResponse.SearchResult> convertToEnhancedSearchResult(StealerLog log, UserPrincipal user) {
-        // Pass user authentication info for proper password masking
-        boolean isAuthenticated = user != null && !"anonymous".equals(user.getId());
-        String userRole = isAuthenticated ? "USER" : "ANONYMOUS";
+    private Optional<SearchResponse.SearchResult> convertToEnhancedSearchResult(StealerLog stealerLog, UserPrincipal user) {
+        // Get user's plan type for subscription-based password masking
+        CommonEnums.PlanType planType = CommonEnums.PlanType.FREE; // Default for anonymous/free users
         
-        return SearchResponse.SearchResult.fromStealerLog(log, isAuthenticated, userRole);
+        if (user != null && !"anonymous".equals(user.getId())) {
+            try {
+                // Fetch user's subscription plan
+                User fullUser = userRepository.findByIdWithRolesAndSubscription(user.getId()).orElse(null);
+                if (fullUser != null && fullUser.getSubscription() != null) {
+                    planType = fullUser.getSubscription().getPlanType();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to get user subscription for password masking: {}", e.getMessage());
+            }
+        }
+        
+        return SearchResponse.SearchResult.fromStealerLogWithPlan(stealerLog, planType);
     }
 
     /**

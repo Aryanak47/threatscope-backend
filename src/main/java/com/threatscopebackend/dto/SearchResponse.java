@@ -1,6 +1,7 @@
 package com.threatscopebackend.dto;
 
 import com.threatscopebackend.document.StealerLog;
+import com.threatscopebackend.entity.enums.CommonEnums;
 import com.threatscopebackend.util.SecurityUtils;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -149,6 +150,52 @@ public class SearchResponse {
         // Convenience method for anonymous users
         public static Optional<SearchResult> fromStealerLog(StealerLog log) {
             return fromStealerLog(log, false, "ANONYMOUS");
+        }
+        
+        /**
+         * NEW: Creates a SearchResult with subscription-based password masking
+         */
+        public static Optional<SearchResult> fromStealerLogWithPlan(StealerLog log, CommonEnums.PlanType planType) {
+            if (log == null) {
+                return Optional.empty();
+            }
+            
+            List<String> dataTypes = calculateAvailableDataTypes(log);
+            boolean verified = calculateVerificationStatus(log);
+            int dataQuality = calculateDataQuality(log);
+            
+            // 🔐 SECURITY: Handle subscription-based password masking
+            boolean hasOriginalPassword = log.getPassword() != null && !log.getPassword().trim().isEmpty();
+            
+            String maskedPassword = "";
+            String passwordMessage = SecurityUtils.getPasswordDisplayMessageByPlan(hasOriginalPassword, planType);
+            
+            if (hasOriginalPassword) {
+                maskedPassword = SecurityUtils.maskPasswordByPlan(log.getPassword(), planType);
+            }
+            
+            return Optional.of(SearchResult.builder()
+                    .id(log.getId())
+                    .email(log.getLogin())
+                    .url(log.getUrl())
+                    .domain(log.getDomain())
+                    .source(log.getSource())
+                    .timestamp(parseDateFromSource(log.getSource()).orElse(log.getCreatedAt()))
+                    .dateCompromised(parseDateFromSource(log.getSource()).orElse(log.getCreatedAt()))
+                    .hasPassword(hasOriginalPassword)
+                    .maskedPassword(maskedPassword) // 🔐 Subscription-based masked password
+                    .passwordDisplayMessage(passwordMessage)
+                    .severity(calculateSeverity(log.getLogin(), log.getDomain()))
+                    .isVerified(verified)
+                    .dataQuality(dataQuality)
+                    // Enhanced metrics
+                    .sourceRecordsAffected(0L)
+                    .sourceQualityScore(0.0)
+                    .sourceRiskLevel("MEDIUM")
+                    .availableDataTypes(dataTypes)
+                    .breachDescription(generateBreachDescription(log.getSource()))
+                    .timeline(createBreachTimeline(log))
+                    .build());
         }
         
         private static List<String> calculateAvailableDataTypes(StealerLog log) {
