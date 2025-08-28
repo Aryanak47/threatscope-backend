@@ -36,30 +36,28 @@ public class BreachDetectionService {
      * Check a monitoring item for new breaches
      * FIXED: Record check AFTER alerts are successfully created
      */
-    public void checkMonitoringItem(MonitoringItem item) {
+    public boolean checkMonitoringItem(MonitoringItem item) {
         log.debug("Checking monitoring item: {} ({})", item.getId(), item.getTargetValue());
 
-        try {
-            // ✅ FIXED: Store current lastChecked BEFORE updating it
-            LocalDateTime previousCheck = item.getLastChecked();
 
-            // Perform search based on monitor type
-            List<Map<String, Object>> results = performSearch(item);
+        // ✅ FIXED: Store current lastChecked BEFORE updating it
+        LocalDateTime previousCheck = item.getLastChecked();
 
-            // Process results using the ORIGINAL lastChecked time
-            boolean alertsCreatedSuccessfully = processSearchResults(item, results, previousCheck);
+        // Perform search based on monitor type
+        List<Map<String, Object>> results = performSearch(item);
 
-            // ✅ FIXED: Only record check AFTER alerts are successfully created
-            if (alertsCreatedSuccessfully) {
-                monitoringService.recordCheck(item.getId());
-                log.debug("Successfully processed and recorded check for monitoring item: {}", item.getId());
-            } else {
-                log.debug("Alerts creation failed, NOT updating lastChecked for item: {}", item.getId());
-            }
+        // Process results using the ORIGINAL lastChecked time
+        boolean alertsCreatedSuccessfully = processSearchResults(item, results, previousCheck);
 
-        } catch (Exception e) {
-            log.error("Error checking monitoring item {}: {}", item.getId(), e.getMessage(), e);
+        // ✅ FIXED: Only record check AFTER alerts are successfully created
+        if (alertsCreatedSuccessfully) {
+            monitoringService.recordCheck(item.getId());
+            log.debug("Successfully processed and recorded check for monitoring item: {}", item.getId());
+            return true;
         }
+        log.debug("Alerts creation failed, NOT updating lastChecked for item: {}", item.getId());
+        return false;
+
     }
 
     /**
@@ -250,7 +248,7 @@ public class BreachDetectionService {
             }
         }
 
-        log.info("Alert creation summary for item {}: {}/{} alerts created successfully", 
+        log.info("Alert creation summary for item {}: {}/{} alerts created successfully",
                 item.getId(), successfulAlerts, newResults.size());
 
         return allAlertsCreatedSuccessfully;
@@ -396,13 +394,8 @@ public class BreachDetectionService {
             if (severity == CommonEnums.AlertSeverity.CRITICAL) {
                 try {
                     // Send immediate real-time notification for critical alerts
-                    realTimeNotificationService.sendRealTimeAlert(alert).thenAccept(sent -> {
-                        if (sent) {
-                            log.info("⚡ CRITICAL alert sent via WebSocket immediately: {}", alert.getId());
-                        } else {
-                            log.debug("📱 User offline - CRITICAL alert will be delivered via email: {}", alert.getId());
-                        }
-                    });
+                    realTimeNotificationService.sendRealTimeAlert(alert);
+                    log.info("⚡ CRITICAL alert sent via WebSocket immediately: {}", alert.getId());
                 } catch (Exception e) {
                     log.error("❌ Failed to send real-time notification for alert {}: {}", alert.getId(), e.getMessage());
                     // Don't fail the entire alert creation if real-time notification fails

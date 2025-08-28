@@ -36,11 +36,12 @@ public class WebSocketTestController {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "WebSocket endpoint is running");
         response.put("timestamp", LocalDateTime.now());
-        response.put("endpoints", new String[]{
-            "/ws/notifications (SockJS)",
-            "/api/ws/notifications (SockJS with context)",
-            "/ws/notifications-raw (Raw WebSocket)"
-        });
+        response.put("endpoints", Map.of(
+            "primary", "http://localhost:8080/api/ws (SockJS)",
+            "sockjs_info", "http://localhost:8080/api/ws/info",
+            "sockjs_websocket", "http://localhost:8080/api/ws/websocket",
+            "context_path", "/api (configured in application.yml)"
+        ));
         
         log.info("📡 WebSocket test endpoint called");
         

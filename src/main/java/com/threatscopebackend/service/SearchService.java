@@ -473,7 +473,7 @@ public class SearchService {
      * Convert StealerLog to BreachDataIndex for Elasticsearch
      */
 
-    // Helper method to extract domain from URL
+// Helper method to extract domain from URL
     private String extractDomain(String url) {
         if (url == null || url.isEmpty()) {
             return "";

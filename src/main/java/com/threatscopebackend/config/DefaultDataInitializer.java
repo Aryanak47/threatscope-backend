@@ -2,7 +2,11 @@ package com.threatscopebackend.config;
 
 import com.threatscopebackend.entity.enums.CommonEnums;
 import com.threatscopebackend.entity.postgresql.Plan;
+import com.threatscopebackend.entity.postgresql.ConsultationPlan;
+import com.threatscopebackend.entity.postgresql.Expert;
 import com.threatscopebackend.repository.postgresql.PlanRepository;
+import com.threatscopebackend.repository.postgresql.ConsultationPlanRepository;
+import com.threatscopebackend.repository.postgresql.ExpertRepository;
 import com.threatscopebackend.service.admin.MonitoringConfigurationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +23,8 @@ import java.util.List;
 public class DefaultDataInitializer implements CommandLineRunner {
     
     private final PlanRepository planRepository;
+    private final ConsultationPlanRepository consultationPlanRepository;
+    private final ExpertRepository expertRepository;
     private final MonitoringConfigurationService configService;
     
     @Override
@@ -27,6 +33,7 @@ public class DefaultDataInitializer implements CommandLineRunner {
         log.info("Initializing default data...");
         
         initializeDefaultPlans();
+        initializeConsultationPlans();
         configService.initializeDefaultConfigurations();
         
         log.info("Default data initialization completed");
@@ -163,4 +170,71 @@ public class DefaultDataInitializer implements CommandLineRunner {
         
         log.info("Created {} default subscription plans", plans.size());
     }
+    
+    private void initializeConsultationPlans() {
+        // Check if consultation plans already exist
+        if (consultationPlanRepository.count() > 0) {
+            log.info("Consultation plans already exist, skipping initialization");
+            return;
+        }
+        
+        log.info("Creating default consultation plans");
+        
+        // BASIC CONSULTATION
+        ConsultationPlan basicConsultation = ConsultationPlan.builder()
+            .name("basic")
+            .displayName("Basic Consultation")
+            .description("Get expert guidance on your security alert with personalized recommendations")
+            .price(new BigDecimal("29.99"))
+            .currency("USD")
+            .sessionDurationMinutes(30)
+            .features("[\"Expert analysis of the breach\", \"30-minute chat session\", \"Basic remediation steps\", \"Password change guidance\"]")
+            .deliverables("[\"Security assessment\", \"Action plan\", \"Best practices guide\"]")
+            .isActive(true)
+            .isPopular(false)
+            .sortOrder(1)
+            .includesFollowUp(false)
+            .build();
+        
+        // PROFESSIONAL CONSULTATION
+        ConsultationPlan professionalConsultation = ConsultationPlan.builder()
+            .name("professional")
+            .displayName("Professional Consultation")
+            .description("Comprehensive security analysis with detailed action plan and follow-up support")
+            .price(new BigDecimal("79.99"))
+            .currency("USD")
+            .sessionDurationMinutes(60)
+            .features("[\"Everything in Basic\", \"60-minute chat session\", \"Detailed security assessment\", \"Custom action plan document\", \"Follow-up monitoring setup\"]")
+            .deliverables("[\"Detailed security report\", \"Custom remediation plan\", \"Monitoring recommendations\", \"Follow-up support\"]")
+            .isActive(true)
+            .isPopular(true)
+            .sortOrder(2)
+            .includesFollowUp(true)
+            .followUpDays(7)
+            .build();
+        
+        // ENTERPRISE CONSULTATION
+        ConsultationPlan enterpriseConsultation = ConsultationPlan.builder()
+            .name("enterprise")
+            .displayName("Enterprise Consultation")
+            .description("Complete security audit with executive briefing and ongoing support")
+            .price(new BigDecimal("199.99"))
+            .currency("USD")
+            .sessionDurationMinutes(90)
+            .features("[\"Everything in Professional\", \"90-minute chat session\", \"Complete security audit\", \"Executive-level report\", \"30-day follow-up support\", \"Integration recommendations\"]")
+            .deliverables("[\"Executive security briefing\", \"Complete audit report\", \"Strategic recommendations\", \"Implementation roadmap\", \"30-day support\"]")
+            .isActive(true)
+            .isPopular(false)
+            .sortOrder(3)
+            .includesFollowUp(true)
+            .followUpDays(30)
+            .build();
+        
+        List<ConsultationPlan> consultationPlans = List.of(basicConsultation, professionalConsultation, enterpriseConsultation);
+        consultationPlanRepository.saveAll(consultationPlans);
+        
+        log.info("Created {} default consultation plans", consultationPlans.size());
+    }
+    
+
 }

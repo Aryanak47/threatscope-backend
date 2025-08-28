@@ -40,8 +40,8 @@ public class WebSocketInterceptorConfig {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void configureWebSocketSecurity() {
-        log.info("🔒 WebSocket security configuration completed after application startup");
-        log.info("✅ WebSocket authentication and session management ready");
+        log.info("WebSocket security configuration completed after application startup");
+        log.info("WebSocket authentication and session management ready");
         
         // The auth interceptor is now ready to be used
         // Spring will automatically use it as it's a @Component

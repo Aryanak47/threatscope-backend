@@ -364,44 +364,45 @@ public class OptimizedMonitoringScheduler {
     }
     
     /**
-     * Process a single real-time monitoring item with instant WebSocket notification
+     * Process a single real-time monitoring item with smart notification logic
      */
     private Integer processRealTimeMonitoringItem(MonitoringItem item) {
         try {
             log.debug("⚡ Processing real-time item: {} for user: {}", item.getId(), item.getUser().getId());
             
-            // 1. Check monitoring item for new breaches
-            breachDetectionService.checkMonitoringItem(item);
+            // 1. Check monitoring item for new breaches - returns true if breaches found
+            boolean breachesFound = breachDetectionService.checkMonitoringItem(item);
             
-            // 2. Send real-time monitoring status update
-            Map<String, Object> statusUpdate = Map.of(
-                "itemId", item.getId(),
-                "targetValue", item.getTargetValue(),
-                "monitorType", item.getMonitorType().name(),
-                "lastChecked", java.time.LocalDateTime.now().toString(),
-                "status", "CHECKED"
-            );
-            
-            // Send non-blocking real-time update
-            realTimeNotificationService.sendMonitoringUpdate(item, "CHECKED", statusUpdate);
+            // 2. Only send notification if breach found or error occurred
+            if (breachesFound) {
+                // Send breach notification
+                Map<String, Object> breachUpdate = Map.of(
+                    "itemId", item.getId(),
+                    "targetValue", item.getTargetValue(),
+                    "monitorType", item.getMonitorType().name(),
+                    "lastChecked", java.time.LocalDateTime.now().toString(),
+                    "breachDetails", "New security breach detected"
+                );
+                
+                // This will trigger a notification because "BREACH_FOUND" is in the important list
+                realTimeNotificationService.sendMonitoringUpdate(item, "BREACH_FOUND", breachUpdate);
+                
+                log.info("🚨 BREACH FOUND: Real-time monitoring detected breach for item {} ({})", 
+                        item.getId(), item.getTargetValue());
+            } else {
+                // Don't send notification for routine checks - just log
+                log.debug("✅ Real-time monitoring check completed for item {} - No breaches found", item.getId());
+            }
             
             return 1;
             
         } catch (Exception e) {
             log.error("Error processing real-time monitoring item {}: {}", item.getId(), e.getMessage());
             
-            // Send error status update
-            try {
-                Map<String, Object> errorUpdate = Map.of(
-                    "itemId", item.getId(),
-                    "status", "ERROR",
-                    "error", e.getMessage(),
-                    "timestamp", java.time.LocalDateTime.now().toString()
-                );
-                realTimeNotificationService.sendMonitoringUpdate(item, "ERROR", errorUpdate);
-            } catch (Exception notificationError) {
-                log.error("Failed to send error notification: {}", notificationError.getMessage());
-            }
+            // Don't send error notifications to users - just log for admin monitoring
+            // Errors will be tracked in admin dashboards and system logs
+            log.warn("⚠️ ADMIN ALERT: Monitoring error for item {} ({}): {}", 
+                    item.getId(), item.getTargetValue(), e.getMessage());
             
             return 0;
         }

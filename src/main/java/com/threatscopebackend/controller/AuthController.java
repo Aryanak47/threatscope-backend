@@ -129,20 +129,45 @@ public class AuthController {
     
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<User>> getCurrentUser(
-            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            HttpServletRequest request) {
         
-        log.info("🔍 /auth/me endpoint called for user ID: {}", userPrincipal.getId());
+        // Enhanced debugging for authentication issues
+        String authHeader = request.getHeader("Authorization");
+        log.info("🔍 /auth/me endpoint called");
+        log.info("🔍 Authorization header present: {}", authHeader != null ? "Yes" : "No");
+        log.info("🔍 UserPrincipal present: {}", userPrincipal != null ? "Yes" : "No");
         
-        User user = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+        if (authHeader != null) {
+            log.info("🔍 Authorization header: {}", authHeader.startsWith("Bearer ") ? "Bearer [REDACTED]" : authHeader);
+        }
         
-        log.info("✅ User data retrieved for: {} ({}) with plan: {}", 
-                user.getEmail(), user.getId(), 
-                user.getSubscription() != null ? user.getSubscription().getPlanType() : "No subscription");
+        // Check if userPrincipal is null (authentication failed)
+        if (userPrincipal == null) {
+            log.error("❌ UserPrincipal is null - authentication failed");
+            log.error("❌ This usually means: JWT token missing, invalid, or expired");
+            return ResponseEntity.status(401)
+                    .body(ApiResponse.error("User not authenticated. Please login again."));
+        }
         
-        return ResponseEntity.ok(
-                ApiResponse.success("User retrieved successfully", user)
-        );
+        log.info("🔍 UserPrincipal found - user ID: {}, email: {}", userPrincipal.getId(), userPrincipal.getEmail());
+        
+        try {
+            User user = userRepository.findByIdWithRolesAndSubscription(userPrincipal.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("User", "id", userPrincipal.getId()));
+            
+            log.info("✅ User data retrieved for: {} ({}) with plan: {}", 
+                    user.getEmail(), user.getId(), 
+                    user.getSubscription() != null ? user.getSubscription().getPlanType() : "No subscription");
+            
+            return ResponseEntity.ok(
+                    ApiResponse.success("User retrieved successfully", user)
+            );
+        } catch (Exception e) {
+            log.error("💥 Error retrieving user data for ID {}: {}", userPrincipal.getId(), e.getMessage());
+            return ResponseEntity.status(500)
+                    .body(ApiResponse.error("Failed to retrieve user data: " + e.getMessage()));
+        }
     }
 
     @PostMapping("/logout")
