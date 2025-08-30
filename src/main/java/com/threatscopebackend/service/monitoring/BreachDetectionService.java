@@ -50,7 +50,7 @@ public class BreachDetectionService {
         boolean alertsCreatedSuccessfully = processSearchResults(item, results, previousCheck);
 
         // ✅ FIXED: Only record check AFTER alerts are successfully created
-        if (alertsCreatedSuccessfully) {
+        if (!results.isEmpty() && alertsCreatedSuccessfully) {
             monitoringService.recordCheck(item.getId());
             log.debug("Successfully processed and recorded check for monitoring item: {}", item.getId());
             return true;

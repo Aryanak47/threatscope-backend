@@ -368,14 +368,15 @@ public class OptimizedMonitoringScheduler {
      */
     private Integer processRealTimeMonitoringItem(MonitoringItem item) {
         try {
+
             log.debug("⚡ Processing real-time item: {} for user: {}", item.getId(), item.getUser().getId());
             
             // 1. Check monitoring item for new breaches - returns true if breaches found
             boolean breachesFound = breachDetectionService.checkMonitoringItem(item);
             
-            // 2. Only send notification if breach found or error occurred
+            // 2. Send appropriate notifications based on results
             if (breachesFound) {
-                // Send breach notification
+                // Send breach notification with monitoring update
                 Map<String, Object> breachUpdate = Map.of(
                     "itemId", item.getId(),
                     "targetValue", item.getTargetValue(),
@@ -384,7 +385,7 @@ public class OptimizedMonitoringScheduler {
                     "breachDetails", "New security breach detected"
                 );
                 
-                // This will trigger a notification because "BREACH_FOUND" is in the important list
+                // Send monitoring update notification (includes alert list refresh trigger)
                 realTimeNotificationService.sendMonitoringUpdate(item, "BREACH_FOUND", breachUpdate);
                 
                 log.info("🚨 BREACH FOUND: Real-time monitoring detected breach for item {} ({})", 

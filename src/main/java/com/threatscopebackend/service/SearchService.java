@@ -34,6 +34,8 @@ import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.threatscopebackend.dto.SearchRequest.SearchType.URL;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -257,7 +259,7 @@ public class SearchService {
             request.setSearchType(SearchRequest.SearchType.EMAIL);
             return searchByLogin(request, pageable, true);
         } else if (query.startsWith("http://") || query.startsWith("https://") || query.contains(".")) { // needs  to add other protocols like app://, android:// etc.
-            request.setSearchType(SearchRequest.SearchType.URL);
+            request.setSearchType(URL);
             return searchByUrl(request, pageable);
         } else {
             request.setSearchType(SearchRequest.SearchType.USERNAME);
@@ -619,6 +621,10 @@ public class SearchService {
      * Search for monitoring purposes - returns raw data for alert processing
      */
     public List<Map<String, Object>> searchForMonitoring(String query, CommonEnums.MonitorType monitorType) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        boolean elasticsearchSucceeded = false;
+        
+        // PRIMARY: Try Elasticsearch search first
         try {
             log.info("🔍 Performing monitoring search for: {} (type: {})", query, monitorType);
             
@@ -635,16 +641,14 @@ public class SearchService {
             searchQuery.setPageable(pageable);
             
             IndexCoordinates indexCoordinates = IndexCoordinates.of(indices);
-            log.info("🔬 About to search in IndexCoordinates: {}", indexCoordinates.getIndexNames());
+            log.info("🔬 About to search in IndexCoordinates: {}", Arrays.toString(indexCoordinates.getIndexNames()));
             
             SearchHits<BreachDataIndex> searchHits = elasticsearchOperations.search(
                     searchQuery, BreachDataIndex.class, indexCoordinates);
             
-            log.info("📋 Search completed. Total hits: {}", searchHits.getTotalHits());
+            log.info("📋 Elasticsearch search completed. Total hits: {}", searchHits.getTotalHits());
             
             // Convert to raw data format for alert processing
-            List<Map<String, Object>> results = new ArrayList<>();
-            
             for (SearchHit<BreachDataIndex> hit : searchHits) {
                 BreachDataIndex breach = hit.getContent();
                 Map<String, Object> result = new HashMap<>();
@@ -653,20 +657,60 @@ public class SearchService {
                 result.put("login", breach.getLogin());
                 result.put("password", breach.getPassword());
                 result.put("url", breach.getUrl());
-                result.put("source", "Unknown"); // BreachDataIndex doesn't have source field
+                result.put("source", "Elasticsearch");
                 result.put("breach_date", breach.getTimestamp());
                 result.put("additional_data", buildAdditionalData(breach));
                 
                 results.add(result);
             }
-            
-            log.debug("Found {} monitoring results for query: {}", results.size(), query);
+            log.info("✅ Elasticsearch monitoring search succeeded: {} results", results.size());
+            if (!results.isEmpty()) return results;
+            // FALLBACK: Only if Elasticsearch completely failed (not if it just returned no results)
+            List<Map<String, Object>> mongoResults = searchInMongoDBForMonitoring(query, monitorType);
+            if (!mongoResults.isEmpty())
+                results.addAll(mongoResults);
             return results;
-            
         } catch (Exception e) {
-            log.error("Monitoring search failed for query '{}': {}", query, e.getMessage(), e);
-            return List.of();
+            log.warn("⚠️ Search failed for query '{}': {}", query, e.getMessage());
+            return results;
         }
+    }
+    
+    /**
+     * MongoDB fallback search for monitoring when Elasticsearch is unavailable
+     */
+    private List<Map<String, Object>> searchInMongoDBForMonitoring(String query, CommonEnums.MonitorType monitorType) {
+        log.info("🍃 Performing MongoDB fallback search for: {} (type: {})", query, monitorType);
+        
+        List<StealerLog> mongoResults = switch (monitorType) {
+            case EMAIL, USERNAME -> stealerLogRepository.findByLoginIgnoreCase(query);
+            case DOMAIN -> stealerLogRepository.findByDomainContainingIgnoreCase(query);
+            // For unsupported types, return empty list with warning
+            case IP_ADDRESS, PHONE, ORGANIZATION, KEYWORD -> {
+                log.warn("⚠️ MongoDB fallback not implemented for monitor type: {}. Returning empty results.", monitorType);
+                yield List.of();
+            }
+        };
+        
+        // Convert MongoDB StealerLog results to the same format as Elasticsearch results
+        List<Map<String, Object>> results = new ArrayList<>();
+        
+        for (StealerLog log : mongoResults) {
+            Map<String, Object> result = new HashMap<>();
+            
+            result.put("id", log.getId());
+            result.put("login", log.getLogin());
+            result.put("password", log.getPassword());
+            result.put("url", log.getUrl());
+            result.put("source", "MongoDB");
+            result.put("breach_date",log.getCreatedAt() != null ? log.getCreatedAt() : java.time.LocalDateTime.now());
+            result.put("domain",log.getDomain() != null ? log.getDomain() : null);
+            
+            results.add(result);
+        }
+        
+        log.info("🍃 MongoDB search completed: {} results for query: {}", results.size(), query);
+        return results;
     }
     
     private Criteria buildMonitoringCriteria(String query, CommonEnums.MonitorType monitorType) {
