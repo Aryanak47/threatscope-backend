@@ -657,7 +657,8 @@ public class SearchService {
                 result.put("login", breach.getLogin());
                 result.put("password", breach.getPassword());
                 result.put("url", breach.getUrl());
-                result.put("source", "Elasticsearch");
+                result.put("source", "ThreatScope Database");
+                result.put("database_source", "Elasticsearch");
                 result.put("breach_date", breach.getTimestamp());
                 result.put("additional_data", buildAdditionalData(breach));
                 
@@ -669,6 +670,7 @@ public class SearchService {
             List<Map<String, Object>> mongoResults = searchInMongoDBForMonitoring(query, monitorType);
             if (!mongoResults.isEmpty())
                 results.addAll(mongoResults);
+
             return results;
         } catch (Exception e) {
             log.warn("⚠️ Search failed for query '{}': {}", query, e.getMessage());
@@ -702,8 +704,9 @@ public class SearchService {
             result.put("login", log.getLogin());
             result.put("password", log.getPassword());
             result.put("url", log.getUrl());
-            result.put("source", "MongoDB");
-            result.put("breach_date",log.getCreatedAt() != null ? log.getCreatedAt() : java.time.LocalDateTime.now());
+            result.put("source", log.getSource() != null ? log.getSource() : "Unknown");
+            result.put("breach_date", log.getCreatedAt() != null ? log.getCreatedAt() : java.time.LocalDateTime.now());
+            result.put("database_source", "MongoDB");
             result.put("domain",log.getDomain() != null ? log.getDomain() : null);
             
             results.add(result);

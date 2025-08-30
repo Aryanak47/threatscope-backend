@@ -114,6 +114,7 @@ public interface BreachAlertRepository extends JpaRepository<BreachAlert, Long> 
            "ORDER BY a.severity DESC, a.createdAt DESC")
     List<BreachAlert> findHighPriorityAlerts(@Param("user") User user);
     
+    
     // OPTIMIZED: Paginated alerts needing notification
     @Query(value = "SELECT * FROM breach_alerts WHERE notification_sent = false " +
            "AND created_at > :cutoffTime ORDER BY severity DESC, created_at ASC LIMIT :size OFFSET :offset", 

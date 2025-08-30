@@ -5,6 +5,13 @@ import com.threatscopebackend.entity.enums.CommonEnums;
 import com.threatscopebackend.entity.postgresql.BreachAlert;
 import com.threatscopebackend.entity.postgresql.MonitoringItem;
 import com.threatscopebackend.entity.postgresql.User;
+import com.threatscopebackend.entity.postgresql.ProcessedBreach;
+import com.threatscopebackend.repository.postgresql.ProcessedBreachRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import com.threatscopebackend.websocket.RealTimeNotificationService;
 import com.threatscopebackend.exception.ResourceNotFoundException;
 import com.threatscopebackend.repository.postgresql.BreachAlertRepository;
 import com.threatscopebackend.repository.postgresql.MonitoringItemRepository;
@@ -30,6 +37,9 @@ public class AlertService {
     private final BreachAlertRepository breachAlertRepository;
     private final MonitoringItemRepository monitoringItemRepository;
     private final NotificationService notificationService;
+    private final ProcessedBreachRepository processedBreachRepository;
+    private final ObjectMapper objectMapper;
+    private final RealTimeNotificationService realTimeNotificationService;
     
     /**
      * Check if there's a recent alert with similar content to prevent duplicates
@@ -246,6 +256,7 @@ public class AlertService {
         return breachAlertRepository.countByUserAndStatus(user, CommonEnums.AlertStatus.NEW);
     }
     
+
     /**
      * Get recent alerts
      */
@@ -412,6 +423,324 @@ public class AlertService {
         
         log.info("Completed batched cleanup: {} old archived alerts cleaned up", totalDeleted);
         return totalDeleted;
+    }
+    
+    /**
+     * Delete an alert and its processed breach record (allows re-detection)
+     */
+    @Transactional
+    public void deleteAlert(User user, Long alertId) {
+        BreachAlert alert = findAlertByUserAndId(user, alertId);
+        
+        // Remove the processed breach record first (allows re-detection of this breach)
+        try {
+            int deletedRecords = processedBreachRepository.deleteByBreachAlertId(alertId);
+            if (deletedRecords > 0) {
+                log.info("Deleted {} processed breach records for alert {}", deletedRecords, alertId);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to delete processed breach records for alert {}: {}", alertId, e.getMessage());
+        }
+        
+        // Delete the alert
+        breachAlertRepository.delete(alert);
+        log.info("Deleted alert {} for user {}", alertId, user.getId());
+    }
+    
+    /**
+     * Create alert from monitoring result with atomic transaction
+     * Moved from BreachDetectionService to fix @Transactional self-invocation issue
+     */
+    @Transactional
+    public boolean createAlertFromResult(MonitoringItem item, Map<String, Object> result, ProcessedBreachRepository processedBreachRepo) {
+        try {
+            String breachId = (String) result.get("id");
+
+            String title = buildAlertTitle(item, result);
+            String description = buildAlertDescription(item, result);
+            CommonEnums.AlertSeverity severity = determineSeverity(item, result);
+            String breachSource = (String) result.getOrDefault("source", "Unknown");
+            LocalDateTime breachDate = parseBreachDate(result);
+            String breachData = convertResultToJson(result);
+
+            BreachAlert alert = createAlert(item, title, description, severity, breachSource, breachDate, breachData);
+
+            // Record this breach as processed to prevent duplicates
+            recordProcessedBreach(item, result, alert, processedBreachRepo);
+
+            // Send immediate real-time notification for all alerts
+            try {
+                realTimeNotificationService.sendRealTimeAlert(alert);
+                log.info("⚡ Real-time alert sent via WebSocket: {} (severity: {})", alert.getId(), severity);
+            } catch (Exception e) {
+                log.error("❌ Failed to send real-time notification for alert {}: {}", alert.getId(), e.getMessage());
+                // Don't fail the entire alert creation if real-time notification fails
+            }
+
+            log.debug("✅ Successfully created alert {} for breach {} in item {}", alert.getId(), breachId, item.getId());
+            return true; // Alert created successfully
+
+        } catch (Exception e) {
+            log.error("Error creating alert for monitoring item {}: {}", item.getId(), e.getMessage());
+            return false;
+        }
+    }
+    
+    // Helper methods moved from BreachDetectionService for @Transactional support
+    
+    private String buildAlertTitle(MonitoringItem item, Map<String, Object> result) {
+        String source = cleanString((String) result.get("source"));
+        String domain = extractDomainFromResult(result);
+
+        if (isNotEmpty(source) && !"Unknown".equals(source)) {
+            return String.format("🚨 New breach detected for %s in %s", item.getTargetValue(), source);
+        } else if (isNotEmpty(domain)) {
+            return String.format("🚨 New breach detected for %s on %s", item.getTargetValue(), domain);
+        } else {
+            return String.format("🚨 New breach detected for %s", item.getTargetValue());
+        }
+    }
+
+    private String buildAlertDescription(MonitoringItem item, Map<String, Object> result) {
+        StringBuilder description = new StringBuilder();
+
+        description.append("🔍 **Security Alert: New Data Breach Detected**\n\n");
+        description.append("🎯 **Monitored Asset:** ").append(item.getTargetValue()).append("\n");
+        description.append("💱 **Monitor Type:** ").append(item.getMonitorType().toString().toLowerCase().replace("_", " ")).append("\n\n");
+        description.append("📄 **Breach Information:**\n");
+
+        String source = cleanString((String) result.get("source"));
+        if (isNotEmpty(source) && !"Unknown".equals(source)) {
+            description.append("• **Source:** ").append(source).append("\n");
+        }
+
+        Object breachDateObj = result.get("breach_date");
+        if (breachDateObj != null) {
+            String formattedDate = formatBreachDateFromObject(breachDateObj);
+            if (isNotEmpty(formattedDate) && !"Unknown".equals(formattedDate)) {
+                description.append("• **Date:** ").append(formattedDate).append("\n");
+            }
+        }
+
+        String domain = extractDomainFromResult(result);
+        if (isNotEmpty(domain)) {
+            description.append("• **Associated Domain:** ").append(domain).append("\n");
+        }
+
+        String password = cleanString((String) result.get("password"));
+        if (isNotEmpty(password)) {
+            description.append("• **Password Exposed:** ").append(maskPassword(password)).append("\n");
+        }
+
+        String url = cleanString((String) result.get("url"));
+        if (isNotEmpty(url) && !url.equals(domain)) {
+            description.append("• **URL:** ").append(url).append("\n");
+        }
+
+        description.append("\n🔒 **Recommended Actions:**\n");
+        description.append("• Change passwords immediately for this account\n");
+        description.append("• Enable two-factor authentication (2FA)\n");
+        description.append("• Monitor account activity for suspicious behavior\n");
+        description.append("• Consider using unique passwords for each service\n\n");
+        description.append("⚠️ Please review this alert and take appropriate security measures.");
+
+        return description.toString();
+    }
+
+    private CommonEnums.AlertSeverity determineSeverity(MonitoringItem item, Map<String, Object> result) {
+        String password = cleanString((String) result.get("password"));
+        String source = cleanString((String) result.get("source"));
+        boolean hasPassword = isNotEmpty(password);
+        boolean hasKnownSource = isNotEmpty(source) && !"Unknown".equals(source);
+
+        if (item.getMonitorType() == CommonEnums.MonitorType.EMAIL && hasPassword) {
+            return CommonEnums.AlertSeverity.CRITICAL;
+        }
+        if (item.getMonitorType() == CommonEnums.MonitorType.DOMAIN && hasPassword) {
+            return CommonEnums.AlertSeverity.HIGH;
+        }
+        if (item.getMonitorType() == CommonEnums.MonitorType.IP_ADDRESS) {
+            return CommonEnums.AlertSeverity.HIGH;
+        }
+        if (item.getMonitorType() == CommonEnums.MonitorType.USERNAME && hasPassword) {
+            return CommonEnums.AlertSeverity.HIGH;
+        }
+
+        LocalDateTime breachDate = parseBreachDate(result);
+        if (breachDate != null && breachDate.isAfter(LocalDateTime.now().minusDays(30))) {
+            return hasPassword ? CommonEnums.AlertSeverity.HIGH : CommonEnums.AlertSeverity.MEDIUM;
+        }
+
+        if (hasKnownSource) {
+            return hasPassword ? CommonEnums.AlertSeverity.MEDIUM : CommonEnums.AlertSeverity.LOW;
+        }
+
+        return hasPassword ? CommonEnums.AlertSeverity.MEDIUM : CommonEnums.AlertSeverity.LOW;
+    }
+
+    private LocalDateTime parseBreachDate(Map<String, Object> result) {
+        try {
+            Object dateObj = result.get("breach_date");
+            return parseBreachDateFromObject(dateObj);
+        } catch (Exception e) {
+            log.debug("Could not parse breach date: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private LocalDateTime parseBreachDateFromObject(Object dateObj) {
+        if (dateObj == null) return null;
+        
+        try {
+            if (dateObj instanceof LocalDateTime) {
+                return (LocalDateTime) dateObj;
+            }
+            if (dateObj instanceof String) {
+                String dateStr = (String) dateObj;
+                if ("null".equals(dateStr) || dateStr.trim().isEmpty()) {
+                    return null;
+                }
+                try {
+                    return LocalDateTime.parse(dateStr);
+                } catch (DateTimeParseException e) {
+                    return LocalDateTime.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            log.debug("Error parsing breach date: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String convertResultToJson(Map<String, Object> result) {
+        try {
+            return objectMapper.writeValueAsString(result);
+        } catch (JsonProcessingException e) {
+            log.error("JSON processing error: {}", e.getMessage());
+            return result.toString();
+        }
+    }
+
+    private void recordProcessedBreach(MonitoringItem item, Map<String, Object> result, BreachAlert alert, ProcessedBreachRepository processedBreachRepo) {
+        try {
+            String breachId = (String) result.get("id");
+            String databaseSource = (String) result.get("database_source");
+            String contentHash = generateSimpleContentHash(item, result);
+            
+            if (breachId != null && !breachId.trim().isEmpty()) {
+                ProcessedBreach processedBreach = ProcessedBreach.builder()
+                        .monitoringItem(item)
+                        .breachAlert(alert)
+                        .breachId(breachId)
+                        .databaseSource(databaseSource)
+                        .contentHash(contentHash)
+                        .build();
+                
+                processedBreachRepo.save(processedBreach);
+                log.debug("Recorded processed breach: {} linked to alert: {} for item: {}", 
+                         breachId, alert.getId(), item.getId());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to record processed breach for item {}: {}", item.getId(), e.getMessage());
+        }
+    }
+
+    private String generateSimpleContentHash(MonitoringItem item, Map<String, Object> result) {
+        try {
+            StringBuilder hashInput = new StringBuilder();
+            hashInput.append(item.getId()).append("|");
+
+            Object login = result.get("login");
+            hashInput.append(login != null ? login.toString() : "").append("|");
+
+            Object password = result.get("password");
+            hashInput.append(password != null ? password.toString() : "").append("|");
+
+            Object source = result.get("source");
+            hashInput.append(source != null ? source.toString() : "").append("|");
+
+            Object url = result.get("url");
+            hashInput.append(url != null ? url.toString() : "");
+
+            return String.valueOf(hashInput.toString().hashCode());
+        } catch (Exception e) {
+            log.debug("Error generating content hash for item {}: {}", item.getId(), e.getMessage());
+            return String.valueOf(System.currentTimeMillis());
+        }
+    }
+
+    private String formatBreachDateFromObject(Object dateObj) {
+        if (dateObj == null) return "Unknown";
+        
+        try {
+            LocalDateTime dateTime = parseBreachDateFromObject(dateObj);
+            if (dateTime != null) {
+                return dateTime.format(DateTimeFormatter.ofPattern("MMM dd, yyyy 'at' HH:mm"));
+            }
+            return "Unknown";
+        } catch (Exception e) {
+            log.debug("Error formatting breach date: {}", e.getMessage());
+            return dateObj.toString();
+        }
+    }
+
+    private boolean isNotEmpty(String value) {
+        return value != null && !value.trim().isEmpty() && !"null".equalsIgnoreCase(value.trim());
+    }
+
+    private String cleanString(String value) {
+        if (value == null || "null".equalsIgnoreCase(value.trim())) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private String extractDomainFromResult(Map<String, Object> result) {
+        String url = cleanString((String) result.get("url"));
+        if (isNotEmpty(url)) {
+            try {
+                if (!url.startsWith("http")) {
+                    url = "https://" + url;
+                }
+                java.net.URI uri = new java.net.URI(url);
+                String domain = uri.getHost();
+                return domain != null ? domain.toLowerCase() : null;
+            } catch (Exception e) {
+                if (url.contains(".")) {
+                    String[] parts = url.split("/")[0].split("@");
+                    String domainPart = parts[parts.length - 1];
+                    if (domainPart.contains(".")) {
+                        return domainPart.toLowerCase();
+                    }
+                }
+            }
+        }
+
+        Object additionalData = result.get("additional_data");
+        if (additionalData instanceof Map) {
+            Map<?, ?> dataMap = (Map<?, ?>) additionalData;
+            String domain = cleanString((String) dataMap.get("domain"));
+            if (isNotEmpty(domain)) {
+                return domain.toLowerCase();
+            }
+        }
+        return null;
+    }
+
+    private String maskPassword(String password) {
+        if (!isNotEmpty(password)) {
+            return "[Not disclosed]";
+        }
+        if (password.length() <= 4) {
+            return "****";
+        }
+        int visibleChars = Math.min(2, password.length() / 3);
+        String start = password.substring(0, visibleChars);
+        String end = password.substring(password.length() - visibleChars);
+        int maskedLength = Math.max(4, password.length() - (2 * visibleChars));
+        String masked = "*".repeat(maskedLength);
+        return start + masked + end;
     }
     
     /**
