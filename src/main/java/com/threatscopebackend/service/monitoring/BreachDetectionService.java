@@ -204,14 +204,14 @@ public class BreachDetectionService {
 
     /**
      * Process search results and create alerts for new breaches
-     * FIXED: Return success status and use previousCheck time to prevent race condition
+     * Return success status and use previousCheck time to prevent race condition
      */
     private boolean processSearchResults(MonitoringItem item, List<Map<String, Object>> results, LocalDateTime previousCheck) {
         if (results.isEmpty()) {
             return true; // No results to process = success
         }
 
-        // ✅ FIXED: Use previousCheck and pass monitoring item for duplicate tracking
+        // Use previousCheck and pass monitoring item for duplicate tracking
         List<Map<String, Object>> newResults = filterNewResults(results, previousCheck, item);
 
         if (newResults.isEmpty()) {
@@ -222,8 +222,7 @@ public class BreachDetectionService {
         log.info("Found {} new breach results for monitoring item: {} (filtered using: {})",
                 newResults.size(), item.getId(), previousCheck);
 
-        // ✅ FIXED: Track alert creation success
-        boolean allAlertsCreatedSuccessfully = true;
+        boolean allAlertsCreatedSuccessfully = false;
         int successfulAlerts = 0;
 
         // Create alerts for new results
@@ -232,12 +231,10 @@ public class BreachDetectionService {
                 boolean alertCreated = alertService.createAlertFromResult(item, result, processedBreachRepository);
                 if (alertCreated) {
                     successfulAlerts++;
-                } else {
-                    allAlertsCreatedSuccessfully = false;
+                    allAlertsCreatedSuccessfully = true;
                 }
             } catch (Exception e) {
                 log.error("Failed to create alert for breach in item {}: {}", item.getId(), e.getMessage());
-                allAlertsCreatedSuccessfully = false;
             }
         }
 
@@ -268,8 +265,6 @@ public class BreachDetectionService {
                                 return false;
                             }
                         }
-                        
-                        
                         return true; // Include this result
                         
                     } catch (Exception e) {
