@@ -208,7 +208,7 @@ public class BreachDetectionService {
      */
     private boolean processSearchResults(MonitoringItem item, List<Map<String, Object>> results, LocalDateTime previousCheck) {
         if (results.isEmpty()) {
-            return true; // No results to process = success
+            return false;
         }
 
         // Use previousCheck and pass monitoring item for duplicate tracking
@@ -216,7 +216,7 @@ public class BreachDetectionService {
 
         if (newResults.isEmpty()) {
             log.debug("No new results for monitoring item: {} (last check: {})", item.getId(), previousCheck);
-            return true; // No new results = success
+            return false;
         }
 
         log.info("Found {} new breach results for monitoring item: {} (filtered using: {})",
