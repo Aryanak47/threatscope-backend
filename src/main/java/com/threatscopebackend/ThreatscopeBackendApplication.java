@@ -19,6 +19,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 )
 @EnableAsync
 @EnableRetry
+@org.springframework.scheduling.annotation.EnableScheduling
 public class ThreatscopeBackendApplication {
 
     public static void main(String[] args) {

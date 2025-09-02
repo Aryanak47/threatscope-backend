@@ -4,6 +4,7 @@ import com.threatscopebackend.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -33,6 +34,7 @@ public class SecurityConfig {
     private final JwtTokenProvider tokenProvider;
     private final CustomUserDetailsService customUserDetailsService;
     private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
+    private final Environment environment;
 
     @Bean
     public JwtAuthenticationFilter tokenAuthenticationFilter() {
@@ -52,7 +54,9 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        // For testing purposes, allow all requests
+        // Check if we're in development profile
+        boolean isDevProfile = Arrays.asList(environment.getActiveProfiles()).contains("dev");
+        
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(session -> session
@@ -61,9 +65,40 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .formLogin(AbstractHttpConfigurer::disable)
             .httpBasic(AbstractHttpConfigurer::disable)
-            .authorizeHttpRequests(auth -> auth
-                .anyRequest().permitAll()  // Allow all requests for testing
-            );
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(restAuthenticationEntryPoint)
+            )
+            .authorizeHttpRequests(auth -> {
+                // Public endpoints
+                auth.requestMatchers("/v1/auth/**").permitAll()
+                    .requestMatchers("/health").permitAll()
+                    .requestMatchers("/plans").permitAll()
+                    .requestMatchers("/plans/**").permitAll()
+                    .requestMatchers("/anonymous/**").permitAll()
+                    .requestMatchers("/mock-payment/test-methods").permitAll()
+                    .requestMatchers("/actuator/**").permitAll();
+                
+                // DEVELOPMENT ONLY: Dev admin endpoints (only in dev profile)
+                if (isDevProfile) {
+                    auth.requestMatchers("/api/dev/**").permitAll();
+                }
+                
+                // WebSocket endpoints - MUST BE BEFORE authenticated() rules
+                auth.requestMatchers("/ws/**").permitAll()
+                    .requestMatchers("/api/ws/**").permitAll()
+                    .requestMatchers("/api/realtime/**").authenticated()
+                    
+                    // Protected endpoints require authentication
+                    .requestMatchers("/user/**").authenticated()
+                    .requestMatchers("/mock-payment/process").authenticated()
+                    .requestMatchers("/mock-payment/cancel").authenticated()
+                    .requestMatchers("/monitoring/**").authenticated()
+                    .requestMatchers("/alerts/**").authenticated()
+                    
+                    // All other requests require authentication
+                    .anyRequest().authenticated();
+            })
+            .addFilterBefore(tokenAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -71,11 +106,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000"));
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "http://localhost:8080")); // Specific origins when using credentials
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("authorization", "content-type", "x-auth-token"));
+        configuration.setAllowedHeaders(Arrays.asList("*")); // Allow all headers
         configuration.setExposedHeaders(Arrays.asList("x-auth-token"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowCredentials(true); // Enable credentials for WebSocket/SockJS
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

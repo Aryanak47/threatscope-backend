@@ -22,15 +22,10 @@ import java.util.List;
 public class IndexNameProvider {
     private final ElasticsearchOperations elasticsearchOperations;
     
-    public static final String BREACH_INDEX_PREFIX = "breaches-";
+    public static final String BREACH_INDEX_PREFIX = "breaches-*";
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
     
-    /**
-     * Gets the current index name (using a single index in the new version)
-     */
-    public String getCurrentMonthIndex() {
-        return BREACH_INDEX_PREFIX;
-    }
+
     
     /**
      * Gets index name for a specific date (returns the main index in the new version)
@@ -49,7 +44,8 @@ public class IndexNameProvider {
     /**
      * Gets indices for the last N months (returns the main index in the new version)
      */
-    public String[] generateIndexNames(int monthsBack) {
+    public String[] generateIndexNamesByMonth(int monthsBack) {
+        monthsBack = Math.max(monthsBack, 1);
         List<String> indices = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM");

@@ -2,8 +2,12 @@ package com.threatscopebackend.service;
 
 import com.threatscopebackend.dto.SearchRequest;
 import com.threatscopebackend.dto.SearchResponse;
+import com.threatscopebackend.entity.enums.CommonEnums;
+import com.threatscopebackend.entity.postgresql.MonitoringItem;
 import com.threatscopebackend.security.UserPrincipal;
 
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -39,4 +43,14 @@ public interface SearchServiceInterface {
      * @return List of search suggestions
      */
     //List<String> getSearchSuggestions(String prefix, SearchRequest.SearchType searchType, int limit);
+    
+    /**
+     * Performs a search specifically for monitoring purposes.
+     * This method is used by the monitoring system to check for new breaches.
+     *
+     * @param query The search query
+     * @param monitorType The type of monitoring item
+     * @return List of matching breach records
+     */
+    List<Map<String, Object>> searchForMonitoring(String query, CommonEnums.MonitorType monitorType);
 }

@@ -39,7 +39,7 @@ public class MultiIndexSearchService {
     public Page<BreachDataIndex> searchAcrossIndices(String query, Pageable pageable, int monthsBack) {
         log.debug("Searching across indices for query: {}, monthsBack: {}", query, monthsBack);
 
-        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(monthsBack);
 
         // Using Criteria API - type-safe and maintainable
         Criteria criteria = new Criteria("login").contains(query)
@@ -60,7 +60,7 @@ public class MultiIndexSearchService {
     public Page<BreachDataIndex> searchLoginAcrossIndices(String login, Pageable pageable, int monthsBack) {
         log.debug("Searching login: {} across {} months", login, monthsBack);
 
-        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(monthsBack);
 
         // Exact match using .keyword field
         Criteria criteria = Criteria.where("login.keyword").is(login);
@@ -79,7 +79,7 @@ public class MultiIndexSearchService {
     public Page<BreachDataIndex> searchUrlAcrossIndices(String urlPattern, Pageable pageable, int monthsBack) {
         log.debug("Searching URL pattern: {} across {} months", urlPattern, monthsBack);
 
-        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(monthsBack);
 
         // Pattern matching for URLs
         Criteria criteria = Criteria.where("url").contains(urlPattern);
@@ -98,7 +98,7 @@ public class MultiIndexSearchService {
     public Page<BreachDataIndex> getRecentBreaches(LocalDateTime since, Pageable pageable) {
         log.debug("Fetching breaches since: {}", since);
 
-        String[] indices = indexNameProvider.getAllIndicesPattern();
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(12);
 
         // Time range query
         Criteria criteria = Criteria.where("timestamp").greaterThanEqual(since);
@@ -119,7 +119,7 @@ public class MultiIndexSearchService {
         log.debug("Advanced search - query: {}, domain: {}, from: {}, to: {}",
                 query, domain, from, to);
 
-        String[] indices = indexNameProvider.generateIndexNames(monthsBack);
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(monthsBack);
 
         // Build complex criteria with multiple conditions
         Criteria criteria = Criteria.where("login").contains(query);
@@ -174,7 +174,7 @@ public class MultiIndexSearchService {
     public List<String> getSuggestions(String prefix, int limit) {
         log.debug("Getting suggestions for prefix: {}, limit: {}", prefix, limit);
 
-        String[] indices = indexNameProvider.getAllIndicesPattern();
+        String[] indices = indexNameProvider.generateIndexNamesByMonth(12);
 
         Criteria criteria = Criteria.where("login").startsWith(prefix);
 

@@ -1,4 +1,4 @@
-package com.threatscope.dto.request;
+package com.threatscopebackend.dto.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -24,20 +24,18 @@ public class RegisterRequest {
     
     @NotBlank(message = "Password is required")
     @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
-    @Pattern(
-        regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#&()–[{}]:;',?/*~$^+=<>]).{8,100}$",
-        message = "Password must contain at least one digit, one lowercase, one uppercase and one special character"
-    )
     private String password;
     
     @NotBlank(message = "Phone number is required")
-    @Pattern(
-        regexp = "^\\+?[1-9]\\d{1,14}$",
-        message = "Phone number must be in E.164 format"
-    )
     private String phoneNumber;
     
     private boolean acceptTerms = false;
     
     private boolean subscribeToNewsletter = false;
+    
+    @Size(max = 100, message = "Company name cannot exceed 100 characters")
+    private String company;
+    
+    @Size(max = 100, message = "Job title cannot exceed 100 characters")
+    private String jobTitle;
 }
