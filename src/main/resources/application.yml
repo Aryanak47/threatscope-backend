@@ -31,11 +31,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
+        format_sql: false
   flyway:
     enabled: true
     baseline-on-migrate: true
@@ -93,6 +93,20 @@ springdoc:
   api-docs:
     path: /v3/api-docs
 
+# Multi-Source Data Integration Configuration for dev profile
+datasources:
+  internal:
+    enabled: true
+    priority: 0
+    max-results: 10000
+  breach-vip:
+    enabled: true  # Enabled for testing in dev
+    base-url: https://breach.vip
+    priority: 1
+    timeout: 5000
+    max-results: 100
+    rate-limit: 1000  # requests per hour
+
 ---
 # Production profile
 spring:
@@ -115,15 +129,25 @@ management:
 
 logging:
   level:
-    root: INFO
-    org.springframework: INFO
-    com.threatscopebackend: DEBUG
+    root: ERROR
+    com.threatscopebackend: INFO
     
-    # ✅ FIXED: Added HikariCP monitoring to detect connection issues
-    com.zaxxer.hikari.HikariConfig: INFO
-    com.zaxxer.hikari.HikariDataSource: INFO
-    com.zaxxer.hikari.pool.HikariPool: WARN
-    com.zaxxer.hikari.pool.PoolBase: WARN
+    # Suppress all SQL execution logs
+    org.hibernate.SQL: OFF
+    org.hibernate.type: OFF
+    org.hibernate.orm: OFF
+    
+    # Suppress database connection logs
+    com.zaxxer.hikari: ERROR
+    org.springframework.jdbc: ERROR
+    org.springframework.orm: ERROR
+    
+    # Suppress MongoDB logs
+    org.mongodb: ERROR
+    
+    # Suppress Spring Boot noise
+    org.springframework: ERROR
+    org.apache.catalina: ERROR
 
 # Monitoring Configuration
 monitoring:
@@ -157,3 +181,81 @@ cleanup:
 
 system:
   health_check_interval: 600000  # 10 minutes
+
+# Multi-Source Data Integration Configuration
+datasources:
+  internal:
+    enabled: true
+    priority: 0
+    max-results: 10000
+  breach-vip:
+    enabled: true  # Enabled for testing
+    base-url: https://breach.vip
+    priority: 1
+    timeout: 5000
+    max-results: 100
+    rate-limit: 1000  # requests per hour
+
+# Resilience4j Configuration for Circuit Breakers and Fault Tolerance
+resilience4j:
+  circuitbreaker:
+    instances:
+      breach-vip:
+        sliding-window-size: 10
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        wait-duration-in-open-state: 30s
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+        minimum-number-of-calls: 5
+        register-health-indicator: true
+      default:
+        sliding-window-size: 10
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+        wait-duration-in-open-state: 20s
+        failure-rate-threshold: 60
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 2s
+        minimum-number-of-calls: 3
+        register-health-indicator: true
+
+  retry:
+    instances:
+      breach-vip:
+        max-attempts: 3
+        wait-duration: 1s
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+          - java.io.IOException
+        ignore-exceptions:
+          - java.lang.IllegalArgumentException
+      default:
+        max-attempts: 2
+        wait-duration: 500ms
+        exponential-backoff-multiplier: 1.5
+
+  timelimiter:
+    instances:
+      breach-vip:
+        timeout-duration: 8s
+        cancel-running-future: true
+      default:
+        timeout-duration: 5s
+        cancel-running-future: true
+
+  thread-pool-bulkhead:
+    instances:
+      breach-vip:
+        max-thread-pool-size: 4
+        core-thread-pool-size: 2
+        queue-capacity: 20
+        keep-alive-duration: 20ms
+      default:
+        max-thread-pool-size: 2
+        core-thread-pool-size: 1
+        queue-capacity: 10
+        keep-alive-duration: 20ms

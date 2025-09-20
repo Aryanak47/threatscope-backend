@@ -55,8 +55,8 @@ public class SearchRequest {
         DOMAIN,         // Domain search
         USERNAME,       // Username search
         PASSWORD,       // Password hash search
-//        PHONE,          // Phone number search
-//        IP_ADDRESS,     // IP address search
+       PHONE,          // Phone number search
+         IP,     // IP address search
         URL,            // URL search
         ADVANCED        // Advanced multi-field search
     }

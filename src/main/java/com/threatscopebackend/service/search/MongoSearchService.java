@@ -22,11 +22,8 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class SearchFallbackService {
+public class MongoSearchService {
     private final StealerLogRepository stealerLogRepository;
-    private final ElasticsearchOperations elasticsearchOperations;
-    private final ElasticsearchClient elasticsearchClient;
-    private final ElasticsearchConfig elasticsearchConfig;
 
     public SearchResponse searchInMongoDB(SearchRequest request, UserPrincipal user) {
         log.info("Falling back to MongoDB search for query: {}", request.getQuery());
@@ -46,11 +43,6 @@ public class SearchFallbackService {
                 .map(Optional::get)
                 .collect(Collectors.toList());
 
-        // Async index the results in Elasticsearch
-//        if (!results.isEmpty()) {
-//            indexInElasticsearchAsync(results);
-//        }
-
         return SearchResponse.builder()
                 .results(searchResults)
                 .totalResults((long) searchResults.size())
@@ -61,43 +53,6 @@ public class SearchFallbackService {
                 .build();
     }
 
-    @Async
-    public void indexInElasticsearchAsync(List<StealerLog> logs) {
-        if (logs == null || logs.isEmpty()) {
-            return;
-        }
-
-        try {
-            // Use the current month's index
-            String indexName = elasticsearchConfig.getCurrentMonthIndex();
-            IndexCoordinates indexCoordinates = IndexCoordinates.of(indexName);
-            
-            // Ensure the index exists with proper mapping
-            ensureIndexExists(indexName);
-            
-            // Save all documents at once using ElasticsearchOperations
-            elasticsearchOperations.save(logs, indexCoordinates);
-            
-            log.info("Successfully indexed {} documents in Elasticsearch index: {}", 
-                    logs.size(), indexName);
-                    
-        } catch (Exception e) {
-            log.error("Error during async indexing: {}", e.getMessage(), e);
-        }
-    }
-    
-    private void ensureIndexExists(String indexName) {
-        try {
-            IndexOperations indexOps = elasticsearchOperations.indexOps(IndexCoordinates.of(indexName));
-            if (!indexOps.exists()) {
-                indexOps.createWithMapping();
-                log.info("Created index with mapping: {}", indexName);
-            }
-        } catch (Exception e) {
-            log.error("Error ensuring index exists: {}", e.getMessage(), e);
-            throw e;
-        }
-    }
 
     private Optional<SearchResponse.SearchResult> convertToSearchResult(StealerLog log) {
         return SearchResponse.SearchResult.fromStealerLog(log);

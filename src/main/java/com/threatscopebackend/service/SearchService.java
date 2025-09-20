@@ -12,10 +12,11 @@ import com.threatscopebackend.repository.mongo.StealerLogRepository;
 import com.threatscopebackend.repository.postgresql.UserRepository;
 import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.data.IndexNameProvider;
+import com.threatscopebackend.service.search.CoreSearchService;
 import com.threatscopebackend.service.search.MultiIndexSearchService;
-import com.threatscopebackend.service.search.SearchFallbackService;
 import com.threatscopebackend.service.security.RateLimitService;
 import com.threatscopebackend.service.core.UsageService;
+import com.threatscopebackend.service.datasource.DataSourceManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
@@ -40,16 +41,19 @@ import static com.threatscopebackend.dto.SearchRequest.SearchType.URL;
 @Service
 @RequiredArgsConstructor
 public class SearchService {
+    private final CoreSearchService coreSearchService;
+    private final RateLimitService rateLimitService;
+    private final UsageService usageService;
+    private final UserRepository userRepository;
+    private final DataSourceManager dataSourceManager;
+    
+    // Legacy dependencies - keep for now to avoid breaking other methods
     private final BreachDataRepository breachDataRepository;
     private final StealerLogRepository stealerLogRepository;
     private final ElasticsearchOperations elasticsearchOperations;
     private final MultiIndexSearchService multiIndexSearchService;
-    private final RateLimitService rateLimitService;
-    private final SearchFallbackService searchFallbackService;
     private final ElasticsearchConfig elasticsearchConfig;
     private final IndexNameProvider indexNameProvider;
-    private final UsageService usageService;
-    private final UserRepository userRepository;
 
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
@@ -73,27 +77,16 @@ public class SearchService {
 //        rateLimitService.checkSearchLimit(user.getId());
 
         try {
-            SearchResponse response = null;
+            // Use CoreSearchService for internal search (Elasticsearch + MongoDB fallback)
+            List<SearchResponse.SearchResult> results = coreSearchService.performInternalSearch(request, user);
             
-            // Step 1: First try Elasticsearch
-            try {
-                Page<BreachDataIndex> esResults = performElasticsearchSearch(request);
-                
-                if (esResults != null && !esResults.isEmpty()) {
-                    // If we have results from Elasticsearch, process and return them
-                    response = buildSearchResponse(esResults, request, startTime, user);
-                } else {
-                    log.info("No results found in Elasticsearch, falling back to MongoDB");
-                }
-            } catch (Exception e) {
-                log.warn("Elasticsearch search failed, falling back to MongoDB: {}", e.getMessage());
-            }
-
-            // Step 2: Fallback to MongoDB search if no ES results
-            if (response == null) {
-                response = searchFallbackService.searchInMongoDB(request, user);
-                response.setExecutionTimeMs(System.currentTimeMillis() - startTime);
-            }
+            SearchResponse response = SearchResponse.builder()
+                    .results(results)
+                    .totalResults((long) results.size())
+                    .currentPage(request.getPage())
+                    .pageSize(request.getSize())
+                    .executionTimeMs(System.currentTimeMillis() - startTime)
+                    .build();
 
             // ✅ **CRITICAL FIX**: Record usage after successful search
             if (response != null && !user.getId().equals("anonymous")) {
@@ -112,6 +105,104 @@ public class SearchService {
             log.error("Search failed for user {}: {}", user.getId(), e.getMessage(), e);
             throw new RuntimeException("Search failed. Please try again later.", e);
         }
+    }
+
+    /**
+     * Multi-source search method that aggregates results from all enabled data sources
+     * This includes internal data (Elasticsearch/MongoDB) and external sources like BreachVIP
+     */
+    public SearchResponse searchMultiSource(SearchRequest request, UserPrincipal user) {
+        long startTime = System.currentTimeMillis();
+
+        // Validate query
+        if (request.getQuery() == null || request.getQuery().trim().length() < MIN_QUERY_LENGTH) {
+            throw new IllegalArgumentException("Search query must be at least " + MIN_QUERY_LENGTH + " characters long");
+        }
+
+        log.info("Starting multi-source search for user {}, query: {}", user.getId(), request.getQuery());
+
+        try {
+            // Search across all enabled data sources in parallel
+            List<SearchResponse.SearchResult> allResults = dataSourceManager
+                    .searchAllSources(request, user)
+                    .join(); // Wait for all sources to complete
+
+            // Apply pagination to aggregated results
+            int totalResults = allResults.size();
+            int startIndex = request.getPage() * request.getSize();
+            int endIndex = Math.min(startIndex + request.getSize(), totalResults);
+            
+            List<SearchResponse.SearchResult> paginatedResults = totalResults > startIndex ? 
+                    allResults.subList(startIndex, endIndex) : 
+                    List.of();
+
+            // Build comprehensive metadata
+            SearchResponse.SearchMetadata metadata = buildMultiSourceMetadata(allResults);
+
+            // Record usage for successful search
+            if (!user.getId().equals("anonymous")) {
+                try {
+                    usageService.recordUsage(user, UsageService.UsageType.SEARCH);
+                    log.info("✅ Recorded multi-source search usage for user: {}", user.getId());
+                } catch (Exception e) {
+                    log.error("❌ Failed to record usage for user {}: {}", user.getId(), e.getMessage(), e);
+                }
+            }
+
+            log.info("Multi-source search completed for user {}. Total results: {}, Returned: {}", 
+                    user.getId(), totalResults, paginatedResults.size());
+
+            return SearchResponse.builder()
+                    .results(paginatedResults)
+                    .totalResults(totalResults)
+                    .currentPage(request.getPage())
+                    .totalPages((int) Math.ceil((double) totalResults / request.getSize()))
+                    .pageSize(request.getSize())
+                    .executionTimeMs(System.currentTimeMillis() - startTime)
+                    .query(request.getQuery())
+                    .searchType(request.getSearchType())
+                    .metadata(metadata)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Multi-source search failed for user {}: {}", user.getId(), e.getMessage(), e);
+            throw new RuntimeException("Multi-source search failed. Please try again later.", e);
+        }
+    }
+
+    /**
+     * Build metadata for multi-source search results
+     */
+    private SearchResponse.SearchMetadata buildMultiSourceMetadata(List<SearchResponse.SearchResult> results) {
+        Map<String, Long> sourceBreakdown = results.stream()
+                .collect(Collectors.groupingBy(
+                        result -> {
+                            if (result.getAdditionalData() != null) {
+                                return (String) result.getAdditionalData().getOrDefault("sourceDisplayName", "Unknown");
+                            }
+                            return "Unknown";
+                        },
+                        Collectors.counting()
+                ));
+
+        Map<String, Long> severityBreakdown = results.stream()
+                .collect(Collectors.groupingBy(
+                        SearchResponse.SearchResult::getSeverity,
+                        Collectors.counting()
+                ));
+
+        long verifiedCount = results.stream()
+                .mapToLong(result -> Boolean.TRUE.equals(result.getIsVerified()) ? 1 : 0)
+                .sum();
+
+        long unverifiedCount = results.size() - verifiedCount;
+
+        return SearchResponse.SearchMetadata.builder()
+                .sourceBreakdown(sourceBreakdown)
+                .severityBreakdown(severityBreakdown)
+                .verifiedCount(verifiedCount)
+                .unverifiedCount(unverifiedCount)
+                .build();
     }
     
     /**

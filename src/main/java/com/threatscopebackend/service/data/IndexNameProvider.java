@@ -42,35 +42,12 @@ public class IndexNameProvider {
     }
     
     /**
-     * Gets indices for the last N months (returns the main index in the new version)
+     * Gets indices for the last N months - uses wildcard pattern to avoid specific index issues
      */
     public String[] generateIndexNamesByMonth(int monthsBack) {
-        monthsBack = Math.max(monthsBack, 1);
-        List<String> indices = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM");
-
-        // Always include the latest index pattern
-        String currentMonthIndex = "breaches-" + now.format(formatter);
-        indices.add(currentMonthIndex);
-
-        // Check how many months back we have data
-        boolean previousMonthExists = true;
-        int monthsChecked = 1;
-
-        // Check up to the requested number of months or until we can't find an index
-        while (previousMonthExists && monthsChecked < monthsBack) {
-            String monthIndex = "breaches-" + now.minusMonths(monthsChecked).format(formatter);
-            if (indexExists(monthIndex)) {
-                indices.add(monthIndex);
-                monthsChecked++;
-            } else {
-                previousMonthExists = false;
-            }
-        }
-
-        log.debug("Generated {} indices for search: {}", indices.size(), indices);
-        return indices.toArray(new String[0]);
+        // Use the wildcard pattern from @Document annotation instead of specific monthly indices
+        log.debug("Using wildcard pattern {} for search (monthsBack: {})", BREACH_INDEX_PREFIX, monthsBack);
+        return new String[]{BREACH_INDEX_PREFIX};
     }
 
     private boolean indexExists(String indexName) {
