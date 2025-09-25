@@ -1,4 +1,4 @@
-package com.threatscope.dto.request;
+package com.threatscopebackend.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;

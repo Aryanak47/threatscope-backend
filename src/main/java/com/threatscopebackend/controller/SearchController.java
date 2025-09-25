@@ -7,6 +7,7 @@ import com.threatscopebackend.security.CurrentUser;
 import com.threatscopebackend.security.UserPrincipal;
 import com.threatscopebackend.service.SearchService;
 import com.threatscopebackend.service.LazyMetricsService;
+import com.threatscopebackend.service.datasource.DataSourceManager;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -18,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -29,6 +31,7 @@ public class SearchController {
 
     private final SearchService searchService;
     private final LazyMetricsService lazyMetricsService;
+    private final DataSourceManager dataSourceManager;
 
 
     /**
@@ -132,6 +135,90 @@ public class SearchController {
             return ResponseEntity.internalServerError().body(Map.of(
                     "status", "error",
                     "message", "An error occurred while processing your search. Please try again later."
+            ));
+        }
+    }
+
+    /**
+     * Multi-source search endpoint - searches across all enabled data sources
+     */
+    @PostMapping("/multi-source")
+    public ResponseEntity<?> searchMultiSource(
+            @Valid @RequestBody SearchRequest request,
+            @CurrentUser UserPrincipal user,
+            HttpServletRequest httpRequest) {
+
+        // Handle anonymous users for demo/testing
+        if (user == null) {
+            user = UserPrincipal.anonymousUser();
+        }
+
+        log.info("Multi-source search request from user {}: {} (type: {})",
+                user.getId(), request.getQuery(), request.getSearchType());
+
+        try {
+            // Add IP address to request context for rate limiting
+            String clientIp = getClientIpAddress(httpRequest);
+
+            // Log the search attempt
+            log.debug("Processing multi-source search request - Query: {}, Type: {}, Page: {}, Size: {}",
+                    request.getQuery(), request.getSearchType(), request.getPage(), request.getSize());
+
+            SearchResponse response = searchService.searchMultiSource(request, user);
+
+            // Log the search result
+            log.debug("Multi-source search completed - Found {} results from {} sources",
+                    response != null ? response.getTotalResults() : 0,
+                    response != null && response.getMetadata() != null && response.getMetadata().getSourceBreakdown() != null ? 
+                            response.getMetadata().getSourceBreakdown().size() : 0);
+
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid multi-source search request from user {}: {}", user.getId(), e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "status", "error",
+                    "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            log.error("Multi-source search failed for user {}: {}", user.getId(), e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "error",
+                    "message", "An error occurred while processing your multi-source search. Please try again later."
+            ));
+        }
+    }
+
+    /**
+     * Get information about available data sources
+     */
+    @GetMapping("/sources")
+    public ResponseEntity<?> getDataSources(@CurrentUser UserPrincipal user) {
+        
+        // Handle anonymous users for demo/testing
+        if (user == null) {
+            user = UserPrincipal.anonymousUser();
+        }
+
+        try {
+            log.debug("Data sources info request from user {}", user.getId());
+            
+            Map<String, Object> sourcesInfo = dataSourceManager.getDataSourceInfo();
+            List<String> enabledSources = dataSourceManager.getEnabledSourceNames();
+            
+            Map<String, Object> response = Map.of(
+                    "sources", sourcesInfo,
+                    "enabledSources", enabledSources,
+                    "totalSources", sourcesInfo.size()
+            );
+            
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Failed to get data sources info: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "error",
+                    "message", "Failed to retrieve data sources information"
             ));
         }
     }

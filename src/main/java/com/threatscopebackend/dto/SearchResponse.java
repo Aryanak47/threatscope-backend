@@ -1,6 +1,8 @@
 package com.threatscopebackend.dto;
 
 import com.threatscopebackend.document.StealerLog;
+import com.threatscopebackend.entity.enums.CommonEnums;
+import com.threatscopebackend.util.SecurityUtils;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
@@ -82,7 +84,11 @@ public class SearchResponse {
         private Boolean isVerified; // NEW: Verification status
         private Map<String, List<String>> highlights;
         private Map<String, Object> additionalData;
-        private String password;
+        
+        // 🔐 SECURITY: Password fields are now properly masked
+        private String maskedPassword; // Contains MASKED password (e.g., "ab****xy")
+        private String passwordDisplayMessage; // User-friendly message about password
+        
         private Integer dataQuality; // NEW: Data quality percentage (0-100)
 
         // NEW: Enhanced metrics
@@ -94,9 +100,10 @@ public class SearchResponse {
         private BreachTimeline timeline;     // When breach occurred vs discovered
         
         /**
-         * Creates a SearchResult from a StealerLog with enhanced metrics
+         * Creates a SearchResult from a StealerLog with enhanced metrics and security
+         * 🔐 IMPORTANT: Passwords are masked for security - full passwords never sent to frontend
          */
-        public static Optional<SearchResult> fromStealerLog(StealerLog log) {
+        public static Optional<SearchResult> fromStealerLog(StealerLog log, boolean isAuthenticated, String userRole) {
             if (log == null) {
                 return Optional.empty();
             }
@@ -105,23 +112,86 @@ public class SearchResponse {
             boolean verified = calculateVerificationStatus(log);
             int dataQuality = calculateDataQuality(log);
             
+            // 🔐 SECURITY: Handle password masking
+            boolean hasOriginalPassword = log.getPassword() != null && !log.getPassword().trim().isEmpty();
+            boolean canViewPassword = SecurityUtils.canViewPassword(userRole, isAuthenticated);
+            
+            String maskedPassword = "";
+            String passwordMessage = SecurityUtils.getPasswordDisplayMessage(hasOriginalPassword, canViewPassword);
+            
+            if (hasOriginalPassword && canViewPassword) {
+                maskedPassword = SecurityUtils.maskPassword(log.getPassword());
+            }
+            
             return Optional.of(SearchResult.builder()
                     .id(log.getId())
                     .email(log.getLogin())
                     .url(log.getUrl())
                     .domain(log.getDomain())
-                    .password(log.getPassword() != null ? log.getPassword() : "")
                     .source(log.getSource())
                     .timestamp(parseDateFromSource(log.getSource()).orElse(log.getCreatedAt()))
-                    .dateCompromised(parseDateFromSource(log.getSource()).orElse(log.getCreatedAt())) // Parse date from source or fallback to created_at
-                    .hasPassword(log.getPassword() != null && !log.getPassword().isEmpty())
+                    .dateCompromised(parseDateFromSource(log.getSource()).orElse(log.getCreatedAt()))
+                    .hasPassword(hasOriginalPassword)
+                    .maskedPassword(maskedPassword) // 🔐 Only masked password sent to frontend
+                    .passwordDisplayMessage(passwordMessage)
                     .severity(calculateSeverity(log.getLogin(), log.getDomain()))
                     .isVerified(verified)
-                    .dataQuality(dataQuality) // NEW: Data quality calculation
-                    // Enhanced metrics from BreachMetricsService (with null safety)
-                    .sourceRecordsAffected( 0L)
-                    .sourceQualityScore( 0.0)
-//                    .sourceRiskLevel(metrics != null ? metrics.getRiskLevel() : "UNKNOWN")
+                    .dataQuality(dataQuality)
+                    // Enhanced metrics
+                    .sourceRecordsAffected(0L)
+                    .sourceQualityScore(0.0)
+                    .sourceRiskLevel("MEDIUM")
+                    .availableDataTypes(dataTypes)
+                    .breachDescription(generateBreachDescription(log.getSource()))
+                    .timeline(createBreachTimeline(log))
+                    .build());
+        }
+        
+        // Convenience method for anonymous users
+        public static Optional<SearchResult> fromStealerLog(StealerLog log) {
+            return fromStealerLog(log, false, "ANONYMOUS");
+        }
+        
+        /**
+         * NEW: Creates a SearchResult with subscription-based password masking
+         */
+        public static Optional<SearchResult> fromStealerLogWithPlan(StealerLog log, CommonEnums.PlanType planType) {
+            if (log == null) {
+                return Optional.empty();
+            }
+            
+            List<String> dataTypes = calculateAvailableDataTypes(log);
+            boolean verified = calculateVerificationStatus(log);
+            int dataQuality = calculateDataQuality(log);
+            
+            // 🔐 SECURITY: Handle subscription-based password masking
+            boolean hasOriginalPassword = log.getPassword() != null && !log.getPassword().trim().isEmpty();
+            
+            String maskedPassword = "";
+            String passwordMessage = SecurityUtils.getPasswordDisplayMessageByPlan(hasOriginalPassword, planType);
+            
+            if (hasOriginalPassword) {
+                maskedPassword = SecurityUtils.maskPasswordByPlan(log.getPassword(), planType);
+            }
+            
+            return Optional.of(SearchResult.builder()
+                    .id(log.getId())
+                    .email(log.getLogin())
+                    .url(log.getUrl())
+                    .domain(log.getDomain())
+                    .source(log.getSource())
+                    .timestamp(parseDateFromSource(log.getSource()).orElse(log.getCreatedAt()))
+                    .dateCompromised(parseDateFromSource(log.getSource()).orElse(log.getCreatedAt()))
+                    .hasPassword(hasOriginalPassword)
+                    .maskedPassword(maskedPassword) // 🔐 Subscription-based masked password
+                    .passwordDisplayMessage(passwordMessage)
+                    .severity(calculateSeverity(log.getLogin(), log.getDomain()))
+                    .isVerified(verified)
+                    .dataQuality(dataQuality)
+                    // Enhanced metrics
+                    .sourceRecordsAffected(0L)
+                    .sourceQualityScore(0.0)
+                    .sourceRiskLevel("MEDIUM")
                     .availableDataTypes(dataTypes)
                     .breachDescription(generateBreachDescription(log.getSource()))
                     .timeline(createBreachTimeline(log))
@@ -186,28 +256,28 @@ public class SearchResponse {
         }
         
         /**
-     * Parse date from source field in format 'stealer_logs_MM_dd_yyyy'
-     * @param source The source string containing the date
-     * @return Optional containing the parsed LocalDateTime, or empty if parsing fails
-     */
-    private static Optional<LocalDateTime> parseDateFromSource(String source) {
-        if (source == null || !source.startsWith("stealer_logs_")) {
-            return Optional.empty();
+         * Parse date from source field in format 'stealer_logs_MM_dd_yyyy'
+         * @param source The source string containing the date
+         * @return Optional containing the parsed LocalDateTime, or empty if parsing fails
+         */
+        private static Optional<LocalDateTime> parseDateFromSource(String source) {
+            if (source == null || !source.startsWith("stealer_logs_")) {
+                return Optional.empty();
+            }
+            
+            try {
+                // Extract the date part after 'stealer_logs_'
+                String datePart = source.substring("stealer_logs_".length());
+                // Parse the date in format MM_dd_yyyy
+                LocalDate date = LocalDate.parse(datePart, DateTimeFormatter.ofPattern("MM_dd_yyyy"));
+                // Convert to LocalDateTime at start of day
+                return Optional.of(date.atStartOfDay());
+            } catch (Exception e) {
+                return Optional.empty();
+            }
         }
         
-        try {
-            // Extract the date part after 'stealer_logs_'
-            String datePart = source.substring("stealer_logs_".length());
-            // Parse the date in format MM_dd_yyyy
-            LocalDate date = LocalDate.parse(datePart, DateTimeFormatter.ofPattern("MM_dd_yyyy"));
-            // Convert to LocalDateTime at start of day
-            return Optional.of(date.atStartOfDay());
-        } catch (Exception e) {
-            return Optional.empty();
-        }
-    }
-    
-    private static String generateBreachDescription(String source) {
+        private static String generateBreachDescription(String source) {
             Map<String, String> sourceDescriptions = Map.of(
                 "stealer_logs_10_07_2025", "Information stealer malware campaign targeting credentials",
                 "stealer_logs_09_15_2025", "Credential harvesting operation via malicious software",

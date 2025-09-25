@@ -1,4 +1,4 @@
-package com.threatscope.dto.response;
+package com.threatscopebackend.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
@@ -20,7 +20,7 @@ public class ApiResponse<T> {
     private boolean success;
     private String message;
     private T data;
-    private Instant timestamp;
+    private String timestamp;
     private Integer status;
     private String error;
     private List<String> errors;
@@ -36,7 +36,7 @@ public class ApiResponse<T> {
                 .success(true)
                 .message(message)
                 .data(data)
-                .timestamp(Instant.now())
+                .timestamp(Instant.now().toString())
                 .status(HttpStatus.OK.value())
                 .build();
     }
@@ -46,7 +46,7 @@ public class ApiResponse<T> {
                 .success(true)
                 .message(message)
                 .data(data)
-                .timestamp(Instant.now())
+                .timestamp(Instant.now().toString())
                 .status(HttpStatus.CREATED.value())
                 .build();
     }
@@ -64,7 +64,18 @@ public class ApiResponse<T> {
                 .success(false)
                 .message(message)
                 .errors(errors != null ? errors : Collections.emptyList())
-                .timestamp(Instant.now())
+                .timestamp(Instant.now().toString())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .build();
+    }
+
+    public static <T> ApiResponse<T> error(String message, T data, HttpStatus status) {
+        return ApiResponse.<T>builder()
+                .success(false)
+                .message(message)
+                .data(data)
+                .timestamp(Instant.now().toString())
                 .status(status.value())
                 .error(status.getReasonPhrase())
                 .build();

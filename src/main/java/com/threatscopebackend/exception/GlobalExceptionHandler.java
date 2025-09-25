@@ -1,8 +1,9 @@
 package com.threatscopebackend.exception;
 
-import com.threatscope.dto.response.ApiResponse;
+import com.threatscopebackend.dto.response.ApiResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -37,21 +38,38 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             @NonNull HttpStatusCode status,
             @NonNull WebRequest request) {
         
-        Map<String, String> errors = ex.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .collect(Collectors.toMap(
-                        FieldError::getField,
-                        fieldError -> {
-                            fieldError.getDefaultMessage();
-                            return fieldError.getDefaultMessage();
-                        }
-                ));
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error -> {
+            String fieldName = error.getField();
+            String errorMessage = error.getDefaultMessage();
+            // If there are multiple errors for the same field, combine them
+            if (errors.containsKey(fieldName)) {
+                errors.put(fieldName, errors.get(fieldName) + "; " + errorMessage);
+            } else {
+                errors.put(fieldName, errorMessage);
+            }
+        });
+        
+        // Create user-friendly error messages
+        StringBuilder combinedMessage = new StringBuilder();
+        if (errors.containsKey("password")) {
+            combinedMessage.append("🔒 Password requirements: ").append(errors.get("password"));
+        }
+        if (errors.containsKey("email")) {
+            if (combinedMessage.length() > 0) combinedMessage.append(". ");
+            combinedMessage.append("📬 Email: ").append(errors.get("email"));
+        }
+        if (errors.containsKey("phoneNumber")) {
+            if (combinedMessage.length() > 0) combinedMessage.append(". ");
+            combinedMessage.append("📱 Phone: ").append(errors.get("phoneNumber"));
+        }
+        
+        String finalMessage = combinedMessage.length() > 0 ? 
+            combinedMessage.toString() : 
+            "Please check your input and try again";
         
         return ResponseEntity.badRequest()
-                .body(ApiResponse.validationError(
-                        new ArrayList<>(errors.values())
-                ));
+                .body(ApiResponse.error(finalMessage, new ArrayList<>(errors.values()), HttpStatus.BAD_REQUEST));
     }
 
 
@@ -73,21 +91,35 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
     }
 
-    @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiResponse<Map<String, String>>> handleConstraintViolationException(
-            ConstraintViolationException ex, WebRequest request) {
-        Map<String, String> errors = new HashMap<>();
-        ex.getConstraintViolations().forEach(violation -> {
-            String fieldName = violation.getPropertyPath().toString();
-            String message = violation.getMessage();
-            errors.put(fieldName, message);
-        });
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolationException(
+            DataIntegrityViolationException ex, WebRequest request) {
+        
+        String userMessage = "Unable to save data due to a validation error.";
+        String rootCause = ex.getMostSpecificCause().getMessage().toLowerCase();
+        
+        if (rootCause.contains("null value") && rootCause.contains("query")) {
+            userMessage = "Target value is required. Please enter the email, domain, or other value you want to monitor.";
+        } else if (rootCause.contains("null value") && rootCause.contains("monitor_name")) {
+            userMessage = "Monitor name is required. Please provide a name for your monitor.";
+        } else if (rootCause.contains("duplicate") || rootCause.contains("unique")) {
+            userMessage = "A monitor with this configuration already exists.";
+        } else if (rootCause.contains("foreign key")) {
+            userMessage = "Invalid reference data. Please try again.";
+        }
         
         return new ResponseEntity<>(
-                ApiResponse.error("Validation failed",
-                        new ArrayList<>(errors.values()),
-                        HttpStatus.BAD_REQUEST),
+                ApiResponse.error(userMessage, HttpStatus.BAD_REQUEST),
                 HttpStatus.BAD_REQUEST
+        );
+    }
+
+    @ExceptionHandler(SubscriptionLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSubscriptionLimitExceededException(
+            SubscriptionLimitExceededException ex, WebRequest request) {
+        return new ResponseEntity<>(
+                ApiResponse.forbidden(ex.getMessage()),
+                HttpStatus.FORBIDDEN
         );
     }
 
@@ -169,6 +201,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             ResourceAlreadyExistsException ex, WebRequest request) {
         return new ResponseEntity<>(
                 ApiResponse.error(ex.getMessage(), HttpStatus.CONFLICT),
+                HttpStatus.CONFLICT
+        );
+    }
+
+    @ExceptionHandler(DuplicateMonitoringException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleDuplicateMonitoringException(
+            DuplicateMonitoringException ex, WebRequest request) {
+        
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("message", ex.getMessage());
+        errorDetails.put("targetValue", ex.getTargetValue());
+        errorDetails.put("monitorType", ex.getMonitorType());
+        errorDetails.put("existingItemId", ex.getExistingItemId());
+        errorDetails.put("suggestion", "You can edit the existing monitoring item or remove it to create a new one.");
+        
+        return new ResponseEntity<>(
+                ApiResponse.error(ex.getMessage(), errorDetails, HttpStatus.CONFLICT),
                 HttpStatus.CONFLICT
         );
     }

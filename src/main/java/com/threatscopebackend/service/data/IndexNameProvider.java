@@ -22,15 +22,10 @@ import java.util.List;
 public class IndexNameProvider {
     private final ElasticsearchOperations elasticsearchOperations;
     
-    public static final String BREACH_INDEX_PREFIX = "breaches-";
+    public static final String BREACH_INDEX_PREFIX = "breaches-*";
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
     
-    /**
-     * Gets the current index name (using a single index in the new version)
-     */
-    public String getCurrentMonthIndex() {
-        return BREACH_INDEX_PREFIX;
-    }
+
     
     /**
      * Gets index name for a specific date (returns the main index in the new version)
@@ -47,34 +42,12 @@ public class IndexNameProvider {
     }
     
     /**
-     * Gets indices for the last N months (returns the main index in the new version)
+     * Gets indices for the last N months - uses wildcard pattern to avoid specific index issues
      */
-    public String[] generateIndexNames(int monthsBack) {
-        List<String> indices = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM");
-
-        // Always include the latest index pattern
-        String currentMonthIndex = "breaches-" + now.format(formatter);
-        indices.add(currentMonthIndex);
-
-        // Check how many months back we have data
-        boolean previousMonthExists = true;
-        int monthsChecked = 1;
-
-        // Check up to the requested number of months or until we can't find an index
-        while (previousMonthExists && monthsChecked < monthsBack) {
-            String monthIndex = "breaches-" + now.minusMonths(monthsChecked).format(formatter);
-            if (indexExists(monthIndex)) {
-                indices.add(monthIndex);
-                monthsChecked++;
-            } else {
-                previousMonthExists = false;
-            }
-        }
-
-        log.debug("Generated {} indices for search: {}", indices.size(), indices);
-        return indices.toArray(new String[0]);
+    public String[] generateIndexNamesByMonth(int monthsBack) {
+        // Use the wildcard pattern from @Document annotation instead of specific monthly indices
+        log.debug("Using wildcard pattern {} for search (monthsBack: {})", BREACH_INDEX_PREFIX, monthsBack);
+        return new String[]{BREACH_INDEX_PREFIX};
     }
 
     private boolean indexExists(String indexName) {

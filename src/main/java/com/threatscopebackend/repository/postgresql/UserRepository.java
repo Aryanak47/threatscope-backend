@@ -69,6 +69,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT DISTINCT u.company FROM User u WHERE u.company IS NOT NULL")
     List<String> findAllCompanies();
     
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.roles WHERE u.id = :id")
+    Optional<User> findByIdWithRoles(@Param("id") Long id);
+    
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.roles WHERE u.email = :email")
+    Optional<User> findByEmailWithRoles(@Param("email") String email);
+    
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.roles LEFT JOIN FETCH u.subscription WHERE u.id = :id")
+    Optional<User> findByIdWithRolesAndSubscription(@Param("id") Long id);
+    
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.roles LEFT JOIN FETCH u.subscription WHERE u.email = :email")
+    Optional<User> findByEmailWithRolesAndSubscription(@Param("email") String email);
+    
     @Query("SELECT u FROM User u WHERE u.id IN :userIds")
     List<User> findByIds(@Param("userIds") List<Long> userIds);
 }
